@@ -7,30 +7,32 @@ from dotenv import load_dotenv
 
 class Config:
     # 1. 确定当前文件所在目录
-    CURRENT_PKG_DIR = Path(__file__).resolve().parent
+    CURRENT_PKG_DIR: Path = Path(__file__).resolve().parent
 
     # 2. 确定项目根目录
-    ROOT_DIR = CURRENT_PKG_DIR.parent.parent
+    ROOT_DIR: Path = CURRENT_PKG_DIR.parent.parent
 
     # 3. 加载根目录下的 .env 文件
     load_dotenv(ROOT_DIR / ".env")
 
     # 对应你截图里的根目录文件夹
-    DATA_DIR = ROOT_DIR / "data"
-    FILES_DIR = ROOT_DIR / "files"
-    WORKSPACE_DIR = ROOT_DIR / "workspace"
-    SCRIPTS_DIR = ROOT_DIR / "scripts"
-    TMP_DIR = ROOT_DIR / "tmp"
-    LOG_DIR = ROOT_DIR / "logs"
+    DATA_DIR: Path = ROOT_DIR / "data"
+    FILES_DIR: Path = ROOT_DIR / "files"
+    WORKSPACE_DIR: Path = ROOT_DIR / "workspace"
+    SCRIPTS_DIR: Path = ROOT_DIR / "scripts"
+    TMP_DIR: Path = ROOT_DIR / "tmp"
+    LOG_DIR: Path = ROOT_DIR / "logs"
 
     # --- 环境变量 (带默认值或类型转换) ---
     # 读取你的 API Key 或数据库配置
     # OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     # DEBUG_MODE = os.getenv("DEBUG", "False").lower() == "true"
-    DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
-    NEO4J_URI = os.getenv("NEO4J_URI")
-    NEO4J_USER = os.getenv("NEO4J_USER")
-    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+    DASHSCOPE_API_KEY: str | None = os.getenv("DASHSCOPE_API_KEY")
+    NEO4J_URI: str | None = os.getenv("NEO4J_URI")
+    NEO4J_USER: str | None = os.getenv("NEO4J_USER")
+    NEO4J_PASSWORD: str | None = os.getenv("NEO4J_PASSWORD")
+    MILVUS_HOST: str | None = os.getenv("MILVUS_HOST")
+    MILVUS_PORT: str | None = os.getenv("MILVUS_PORT")
 
     # --- 自动初始化 (可选) ---
     @classmethod
@@ -50,4 +52,4 @@ def get_configs() -> Config:
     return Config()
 
 
-config = get_configs()
+config: Config = get_configs()
