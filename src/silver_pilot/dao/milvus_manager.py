@@ -1,3 +1,10 @@
+"""
+模块名称：milvus_manager
+功能描述：Milvus 向量数据库的通用 DAO 管理器，提供集合创建与索引挂载、数据批量插入与
+         Upsert、向量相似度检索（支持标量过滤）、标量精确查询以及条件删除等完整的
+         CRUD 操作封装。
+"""
+
 from pathlib import Path
 from typing import Any
 

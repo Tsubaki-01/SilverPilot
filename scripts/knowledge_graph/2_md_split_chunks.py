@@ -1,3 +1,10 @@
+"""
+模块名称：md_split_chunks
+功能描述：Markdown 文档语义结构化切分工具，解析 Markdown 标题层级生成带上下文路径的
+         文本块（Chunks），支持智能分隔符感知切分和重叠窗口，将切分结果输出为 JSON
+         格式供下游三元组抽取使用。
+"""
+
 import glob
 import json
 import os

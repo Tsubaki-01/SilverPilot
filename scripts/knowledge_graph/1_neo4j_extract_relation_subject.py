@@ -1,3 +1,9 @@
+"""
+模块名称：neo4j_extract_relation_subject
+功能描述：从 Neo4j 全量导出的 CSV 文件中提取所有唯一的节点标签（Labels）和关系类型（Types），
+         并将提取结果保存为 JSON 格式的 Schema 文件，作为知识图谱构建流程的第一步。
+"""
+
 import json
 
 import pandas as pd

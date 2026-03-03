@@ -1,3 +1,9 @@
+"""
+模块名称：log
+功能描述：基于 Loguru 的多通道日志工具模块，支持按业务通道（channel）隔离日志文件输出，
+         自动管理控制台初始化与文件 Handler 的防重复绑定，提供日志轮转、压缩归档等功能。
+"""
+
 # mypy: ignore-errors
 import os
 import sys

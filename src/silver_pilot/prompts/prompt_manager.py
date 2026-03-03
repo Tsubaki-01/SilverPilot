@@ -1,3 +1,9 @@
+"""
+模块名称：prompt_manager
+功能描述：Prompt 模板管理器，基于 Jinja2 和 YAML 实现 Prompt 的加载、缓存与渲染，
+         支持路径自动解析、模型配置提取以及模板变量动态填充。
+"""
+
 from functools import lru_cache
 from pathlib import Path
 from typing import Any

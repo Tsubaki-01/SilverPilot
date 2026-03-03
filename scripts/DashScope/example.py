@@ -1,4 +1,11 @@
+"""
+模块名称：example
+功能描述：DashScope API 调用示例脚本，演示如何通过流式输出与增量模式调用 DeepSeek 大模型，
+         并分离展示思考过程（reasoning）与最终回复内容。
+"""
+
 from dashscope import Generation
+
 from silver_pilot.config import config
 
 # 初始化请求参数

@@ -1,3 +1,10 @@
+"""
+模块名称：triplet_extract
+功能描述：基于大语言模型（DashScope/Qwen）的知识图谱三元组抽取脚本，从结构化文本块中
+         自动提取实体及关系三元组，采用 Pydantic 结构化输出和断点续传机制，
+         将抽取结果保存为 JSON 格式。
+"""
+
 import glob
 import json
 import os

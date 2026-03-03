@@ -1,3 +1,10 @@
+"""
+模块名称：entity_aligner
+功能描述：知识图谱实体对齐工具，利用 SentenceTransformer 语义模型和 Faiss 向量检索引擎，
+         将新抽取的实体与 CMeKG 已有知识库中的实体进行语义匹配，自动判定是链接已有节点
+         还是创建新节点，并将对齐结果导出为 CSV 文件。
+"""
+
 import json
 import os
 import sys

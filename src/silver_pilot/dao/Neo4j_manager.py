@@ -1,3 +1,10 @@
+"""
+模块名称：Neo4j_manager
+功能描述：Neo4j 知识图谱数据库的核心 DAO 管理器，封装了对图数据库中节点和关系的
+         增删改查（CRUD）操作，包括批量三元组导入、节点查询与更新、Schema 提取
+         以及级联删除等功能。
+"""
+
 import re
 from typing import Any
 

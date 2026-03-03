@@ -1,3 +1,10 @@
+"""
+模块名称：import_to_neo4j
+功能描述：知识图谱数据导入 Neo4j 的终端脚本，读取三元组抽取结果和实体对齐映射表，
+         将清洗后的实体和关系通过 MERGE 语法批量写入 Neo4j 图数据库，
+         作为知识图谱构建流水线的最后一步。
+"""
+
 import json
 import os
 from pathlib import Path

@@ -1,3 +1,9 @@
+"""
+模块名称：config
+功能描述：项目全局配置管理模块，负责加载 .env 环境变量、定义项目目录结构及数据库连接参数，
+         并通过单例模式提供统一的配置访问入口。
+"""
+
 import os
 from functools import lru_cache
 from pathlib import Path
