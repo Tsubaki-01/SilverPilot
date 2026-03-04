@@ -16,7 +16,7 @@ from silver_pilot.utils import get_channel_logger
 
 # ================= 日志与配置初始化 =================
 LOG_FILE_DIR: Path = config.LOG_DIR / "milvus_logs"
-logger = get_channel_logger(LOG_FILE_DIR, "MilvusManager")
+logger = get_channel_logger(LOG_FILE_DIR, "milvus_manager")
 # ===================================================
 
 

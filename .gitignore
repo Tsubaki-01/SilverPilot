@@ -224,3 +224,4 @@ logs/
 data/
 .pre-commit-config.yaml
 workspace/
+.vscode/

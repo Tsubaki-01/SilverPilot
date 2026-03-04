@@ -1,6 +1,6 @@
 """
 模块名称: huatuo_dlq_recovery.py
-功能描述: 银发守护项目 - 死信队列 (DLQ) 数据清洗与补偿入库脚本
+功能描述: 死信队列 (DLQ) 数据清洗与补偿入库脚本
 处理逻辑: 读取 DLQ 文件 -> 诊断超长字符 -> 强制安全截断 -> 重新向量化 -> 重新入库
 """
 
@@ -12,17 +12,35 @@ from pathlib import Path
 from typing import Any
 
 from FlagEmbedding import FlagModel
-from silver_pilot.dao.milvus_dao import MilvusManager
 
-# ================= 导入项目配置与基建 =================
+# ================= 导入项目配置 =================
 from silver_pilot.config import config
-from silver_pilot.utils.log import LogManager
+from silver_pilot.dao import MilvusManager
+from silver_pilot.utils import get_channel_logger
 
 # 初始化日志
-LOG_FILE_DIR: Path = config.LOG_DIR / "pipeline_logs"
-log_manager = LogManager(LOG_FILE_DIR, "DLQRecovery")
-logger = log_manager.get_logger()
+LOG_FILE_DIR: Path = config.LOG_DIR / "Huatuo_pipline_logs"
+logger = get_channel_logger(LOG_FILE_DIR, "DLQRecovery")
 # ===================================================
+DLQ_PATH: Path = config.TMP_DIR / "milvus/huatuo_dlq.jsonl"
+
+
+def safe_byte_truncate(text: str, max_bytes: int) -> str:
+    """
+    严格按照 UTF-8 字节长度截断，防止中文字符被劈裂导致乱码。
+    """
+    if not text:
+        return ""
+
+    text_bytes = text.encode("utf-8")
+    if len(text_bytes) <= max_bytes:
+        return text
+
+    # 预留 3 个字节给省略号 "..."
+    # 截取前面的字节
+    truncated_bytes = text_bytes[: max_bytes - 3]
+    # 解码回字符串，errors='ignore' 会自动丢弃末尾被劈碎的半个中文字符
+    return truncated_bytes.decode("utf-8", errors="ignore") + "..."
 
 
 class DLQRecoveryPipeline:
@@ -30,7 +48,7 @@ class DLQRecoveryPipeline:
         self.batch_size: int = batch_size
         self.vector_dim: int = 1024
 
-        # 1. 连接 Milvus (无需重新建表，直接复用已有表)
+        # 1. 连接 Milvus
         self.db_manager = MilvusManager(collection_name=collection_name)
 
         # 2. 延迟加载 Embedding 模型
@@ -53,7 +71,7 @@ class DLQRecoveryPipeline:
 
     def run_recovery(self) -> None:
         """核心修复流：读取 DLQ -> 截断 -> 向量化 -> 入库"""
-        dlq_file_path = config.DATA_DIR / "huatuo_dlq.jsonl"
+        dlq_file_path = DLQ_PATH
 
         if not dlq_file_path.exists():
             logger.info("🎉 未发现 DLQ 文件，暂无需要补偿的数据。")
@@ -71,7 +89,6 @@ class DLQRecoveryPipeline:
                     record = json.loads(line)
                     # 从 DLQ 记录中提取原始批次数据
                     batch_data = record.get("data", [])
-                    # 兼容之前你原本的 original_data 结构，如果你存的是 batch 列表就直接 extend
                     if isinstance(batch_data, list):
                         recovery_items.extend(batch_data)
                 except json.JSONDecodeError:
@@ -93,16 +110,10 @@ class DLQRecoveryPipeline:
 
             # --- 核心清洗逻辑：防御性截断 ---
             for item in batch_items:
-                # 修复 answer 超长
-                if len(item["answer_text"]) > self.MAX_ANSWER_LEN:
-                    logger.debug(f"✂️ 截断超长 Answer (ID: {item.get('qa_id')}) - 原长度: {len(item['answer_text'])}")
-                    item["answer_text"] = item["answer_text"][: self.MAX_ANSWER_LEN] + "..."
+                item["answer_text"] = safe_byte_truncate(item["answer_text"], self.MAX_ANSWER_LEN)
+                item["question_text"] = safe_byte_truncate(item["question_text"], self.MAX_QUESTION_LEN)
 
-                # 修复 question 超长 (以防万一)
-                if len(item["question_text"]) > self.MAX_QUESTION_LEN:
-                    item["question_text"] = item["question_text"][: self.MAX_QUESTION_LEN] + "..."
-
-            # 3. 重新向量化 (加上你的日志黑洞)
+            # 3. 重新向量化
             instruction = "为这个医学问题生成表示，用于检索相关的专业解答："
             queries = [f"{instruction}{item['question_text']}" for item in batch_items]
 
@@ -125,14 +136,14 @@ class DLQRecoveryPipeline:
             ]
 
             try:
-                self.db_manager.insert_data(entities)
+                self.db_manager.upsert_data(entities)
                 success_count += len(batch_items)
                 logger.info(f"✅ 补偿进度: {success_count}/{total_records} 条")
             except Exception as e:
                 logger.error(f"❌ 补偿失败 (批次 {i}): {e}")
 
         # 5. 善后处理：备份已处理的 DLQ 文件
-        backup_path = config.DATA_DIR / f"huatuo_dlq_processed_{int(time.time())}.jsonl"
+        backup_path = config.TMP_DIR / "milvus" / f"huatuo_dlq_processed_{int(time.time())}.jsonl"
         os.rename(dlq_file_path, backup_path)
         logger.success("-" * 40)
         logger.success(f"🎊 补偿入库全部完成！共成功挽救了 {success_count} 条数据。")

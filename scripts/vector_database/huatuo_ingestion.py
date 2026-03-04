@@ -1,7 +1,6 @@
 """
 模块名称: huatuo_ingestion.py
-功能描述: 银发守护项目 - Huatuo26M-Lite 数据集的高吞吐向量化与入库流水线
-创建规范: 严格遵循 Python 最新 Type Hint 规范，集成 Pydantic 校验与分批写入机制
+功能描述: Huatuo26M-Lite 数据集的高吞吐向量化与入库流水线
 """
 
 import os
@@ -133,7 +132,7 @@ class HuatuoDataPipeline:
         start_time: float = time.time()
 
         # 分批次处理 (Batch Processing)
-        for i in tqdm(range(40960, total_records, self.batch_size)):
+        for i in tqdm(range(0, total_records, self.batch_size)):
             batch_raw = dataset[i : i + self.batch_size]
 
             # HuggingFace Datasets 切片返回的是 Dict[List]，将其转换为 List[Dict] 以便 Pydantic 校验

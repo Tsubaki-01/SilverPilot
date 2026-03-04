@@ -1,5 +1,5 @@
 """
-模块名称：Neo4j_manager
+模块名称：neo4j_manager
 功能描述：Neo4j 知识图谱数据库的核心 DAO 管理器，封装了对图数据库中节点和关系的
          增删改查（CRUD）操作，包括批量三元组导入、节点查询与更新、Schema 提取
          以及级联删除等功能。
@@ -17,7 +17,7 @@ from silver_pilot.utils import get_channel_logger
 
 # ================= 日志与配置初始化 =================
 LOG_FILE_DIR = config.LOG_DIR / "neo4j_logs"
-logger = get_channel_logger(LOG_FILE_DIR, "Neo4jManager")
+logger = get_channel_logger(LOG_FILE_DIR, "neo4j_manager")
 # ===================================================
 
 
