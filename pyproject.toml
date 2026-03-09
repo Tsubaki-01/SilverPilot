@@ -28,6 +28,7 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "pyyaml>=6.0.3",
     "regex>=2026.1.15",
+    "requests>=2.32.5",
     "sentence-transformers>=5.2.3",
     "torch>=2.10.0",
     "transformers==4.57.6",
@@ -52,7 +53,7 @@ packages = ["src/silver_pilot"]
 # 目标 Python 版本
 target-version = "py312"
 # 行长限制
-line-length = 120
+line-length = 100
 
 [tool.ruff.lint]
 # 启用规则组合：

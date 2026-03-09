@@ -77,7 +77,7 @@ def process_chunk(chunk: dict[str, Any]) -> dict[str, Any]:
     header_path = chunk.get("header_path", "")
     chunk_text = chunk.get("content", "")
 
-    messages = prompt_manager.render(prompt_path, header_path=header_path, chunk_text=chunk_text)
+    messages = prompt_manager.build_prompt(prompt_path, header_path=header_path, chunk_text=chunk_text)
 
     client = OpenAI(
         api_key=config.DASHSCOPE_API_KEY,
@@ -86,7 +86,7 @@ def process_chunk(chunk: dict[str, Any]) -> dict[str, Any]:
     try:
         response = client.chat.completions.parse(
             model=MODEL_NAME,
-            messages=messages,  # type: ignore[arg-type]
+            messages=messages,
             response_format=ExtractionOutput,
             temperature=0.1,
         )
