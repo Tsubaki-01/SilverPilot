@@ -5,6 +5,8 @@
 """
 
 import io
+import shutil
+import tempfile
 import time
 import zipfile
 from pathlib import Path
@@ -340,27 +342,24 @@ class MinerUService:
         self,
         extract_result: MinerUExtractResult,
         output_dir: Path,
-    ) -> Path:
+    ) -> list[Path]:
         """
-        下载单个文件的提取结果 zip 并解压到本地。
+        下载单个文件的提取结果 zip，仅提取其中的 .md 文件到指定目录。
 
         Args:
             extract_result: 已完成的提取结果
-            output_dir: 输出目录
+            output_dir: 输出目录（.md 文件将直接存放于此）
 
         Returns:
-            Path: 解压后的目录路径
+            list[Path]: 提取出的 .md 文件路径列表
 
         Raises:
-            MineRUDownloadError: 下载或解压失败
+            MinerUDownloadError: 下载或解压失败
         """
         if not extract_result.is_done or not extract_result.full_zip_url:
             raise MinerUDownloadError(f"文件 {extract_result.file_name} 尚未完成或无下载链接")
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        file_stem = Path(extract_result.file_name).stem
-        extract_dir = output_dir / file_stem
-
         logger.info(f"正在下载结果: {extract_result.file_name}")
 
         try:
@@ -370,15 +369,28 @@ class MinerUService:
             logger.error(f"下载结果失败: {extract_result.file_name}, 错误: {e}")
             raise MinerUDownloadError(f"下载 {extract_result.file_name} 结果失败: {e}") from e
 
+        md_files: list[Path] = []
         try:
             with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-                zf.extractall(extract_dir)
+                # 解压到临时目录，再筛选 .md 文件
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    zf.extractall(tmp_dir)
+                    for md_path in Path(tmp_dir).rglob("*.md"):
+                        dest = (
+                            output_dir
+                            / f"{Path(extract_result.file_name).with_suffix('')}_{md_path.stem}.md"
+                        )
+                        shutil.copy2(md_path, dest)
+                        md_files.append(dest)
+                        logger.info(f"已保存: {dest}")
         except zipfile.BadZipFile as e:
             logger.error(f"解压结果失败: {extract_result.file_name}, 错误: {e}")
             raise MinerUDownloadError(f"解压 {extract_result.file_name} 结果失败: {e}") from e
 
-        logger.info(f"结果已解压到: {extract_dir}")
-        return extract_dir
+        if not md_files:
+            logger.warning(f"压缩包中未找到 .md 文件: {extract_result.file_name}")
+
+        return md_files
 
     def download_results(
         self,
@@ -386,21 +398,21 @@ class MinerUService:
         output_dir: Path,
     ) -> list[Path]:
         """
-        批量下载所有已完成文件的提取结果。
+        批量下载所有已完成文件的提取结果，仅保留 .md 文件。
 
         Args:
             extract_response: 提取结果响应
-            output_dir: 输出根目录
+            output_dir: 输出目录
 
         Returns:
-            list[Path]: 各文件解压目录列表
+            list[Path]: 所有提取出的 .md 文件路径列表
         """
-        paths: list[Path] = []
+        all_md_files: list[Path] = []
         for result in extract_response.extract_result:
             if result.is_done and result.full_zip_url:
-                path = self.download_result(result, output_dir)
-                paths.append(path)
-        return paths
+                md_files = self.download_result(result, output_dir)
+                all_md_files.extend(md_files)
+        return all_md_files
 
     # ------------------------------------------------------------------
     # 6. 一站式完整流程
@@ -428,10 +440,10 @@ class MinerUService:
             timeout: 最大等待秒数
 
         Returns:
-            list[Path]: 各文件结果解压目录列表
+            list[Path]: 提取出的 .md 文件路径列表
 
         Raises:
-            MineRUError: 任一阶段发生错误
+            MinerUError: 任一阶段发生错误
         """
         output_path = Path(output_dir)
         logger.info(f"===== 开始 PDF→MD 转换流程，共 {len(file_paths)} 个文件 =====")
@@ -453,8 +465,8 @@ class MinerUService:
             timeout=timeout,
         )
 
-        # Step 5: 下载结果
-        result_dirs = self.download_results(extract_resp, output_path)
+        # Step 5: 下载结果（仅保留 .md 文件）
+        md_files = self.download_results(extract_resp, output_path)
 
-        logger.info(f"===== PDF→MD 转换流程完成，结果目录: {result_dirs} =====")
-        return result_dirs
+        logger.info(f"===== PDF→MD 转换流程完成，共获得 {len(md_files)} 个 .md 文件 =====")
+        return md_files
