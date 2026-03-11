@@ -147,7 +147,7 @@ class ExcelChunker:
             for col in group.columns:
                 text = parsed_row.contents.get(col)
                 if text:
-                    sections.append(f"【{col}】{text}")
+                    sections.append(f"**{col}**{text}")
 
             if not sections:
                 continue  # 该组全部为空，跳过
@@ -155,18 +155,16 @@ class ExcelChunker:
             # 合并文本
             merged_text = self.section_separator.join(sections)
 
-            # 注入前缀
-            if prefix:
-                merged_text = f"[{prefix}] {merged_text}"
-
             # 二次分段（如超过长度阈值）
             text_segments = self._splitter.split_if_needed(merged_text)
 
             for sub_idx, segment in enumerate(text_segments):
+                # 确保切分出来的每一个子块都带有前缀
+                final_content = f"**{prefix}** {segment}" if prefix else segment
                 chunks.append(
                     DocumentChunk(
                         group_name=group.name,
-                        content=segment,
+                        content=final_content,
                         metadata=parsed_row.metadata.copy(),
                         source_file=parsed_row.source_file,
                         sheet_name=parsed_row.sheet_name,

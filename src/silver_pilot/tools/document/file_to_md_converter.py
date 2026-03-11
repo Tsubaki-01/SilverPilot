@@ -18,7 +18,9 @@ from pydantic import BaseModel, Field
 from silver_pilot.config import config
 from silver_pilot.utils import get_channel_logger
 
-logger = get_channel_logger(log_dir=config.LOG_DIR / "mineru", channel_name="MinerU")
+logger = get_channel_logger(
+    log_dir=config.LOG_DIR / "file_to_md_converter", channel_name="file_to_md_converter"
+)
 
 # ========== 常量 ==========
 

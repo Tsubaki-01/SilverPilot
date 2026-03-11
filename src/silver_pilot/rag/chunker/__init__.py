@@ -4,18 +4,6 @@
          共享 DocumentChunk 数据结构，支持统一入库。
 """
 
-from .chunker_base import DocumentChunk, TextSplitter
-from .excel_chunker import DRUG_INSTRUCTION_GROUPS, ChunkGroup, ExcelChunker
-from .markdown_chunker import MarkdownChunker
+from .unified_chunker import UnifiedChunker
 
-__all__ = [
-    # 共享数据结构
-    "DocumentChunk",
-    "TextSplitter",
-    # Excel 切片
-    "ExcelChunker",
-    "ChunkGroup",
-    "DRUG_INSTRUCTION_GROUPS",
-    # Markdown 切片
-    "MarkdownChunker",
-]
+__all__ = ["UnifiedChunker"]
