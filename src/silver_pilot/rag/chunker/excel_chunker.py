@@ -1,66 +1,38 @@
 """
-模块名称：chunk_builder
-功能描述：通用的 Excel 行数据分块器（按主题分组 Chunking）。
-         将 ExcelParser 输出的 ParsedRow 按预定义或自动推断的主题分组合并为 2~3 个
+模块名称：excel_chunker
+功能描述：Excel 行数据分块器（按主题分组 Chunking）。
+         将 ExcelParser 输出的 ExcelPasedRow 按预定义或自动推断的主题分组合并为
          语义聚合的 Document Chunk，用于后续 Embedding 与 Milvus 入库。
-使用说明: ChunkBuilder 为主要类，用于将 ParsedRow 分组合并为 DocumentChunk。包含以下方法：
 
-- ``__init__(self, chunk_groups: Sequence[ChunkGroup], context_prefix_field: str | None = None)``: 初始化分块器，需提供主题分组配置。
-- ``build(self, row: ParsedRow) -> list[DocumentChunk]``: 对单条 ParsedRow 进行分块，返回分块结果列表。
-- ``build_batch(self, rows: Iterator[ParsedRow] | Sequence[ParsedRow]) -> Iterator[DocumentChunk]``: 对批量 ParsedRow 进行分块，返回分块结果迭代器。
+使用说明: ExcelChunker 为主要类，用于将 ExcelPasedRow 分组合并为 DocumentChunk。包含以下方法：
+
+- ``__init__(...)``: 初始化分块器，需提供主题分组配置。
+- ``build(self, row: ExcelPasedRow) -> list[DocumentChunk]``: 对单条 ExcelPasedRow 进行分块。
+- ``build_batch(...) -> Iterator[DocumentChunk]``: 对批量 ExcelPasedRow 进行分块。
 """
 
-from __future__ import annotations
-
-import json
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from silver_pilot.config import config
-from silver_pilot.tools.document import ParsedRow
+from silver_pilot.tools.document import ExcelPasedRow
 from silver_pilot.utils import get_channel_logger
 
+from .chunker_base import (
+    MAX_CHUNK_SIZE,
+    OVERLAP_LENGTH,
+    DocumentChunk,
+    TextSplitter,
+)
+
 # ================= 日志初始化 =================
-LOG_FILE_DIR: Path = config.LOG_DIR / "chunk_builder"
-logger = get_channel_logger(LOG_FILE_DIR, "chunk_builder")
+LOG_FILE_DIR: Path = config.LOG_DIR / "excel_chunker"
+logger = get_channel_logger(LOG_FILE_DIR, "excel_chunker")
 # =============================================
 
-# ================= 常量定义 =================
-MAX_CHUNK_SIZE: int = 1800
-OVERLAP_LENGTH: int = 180
 
 # ---------- 数据结构 ----------
-
-
-@dataclass
-class DocumentChunk:
-    """
-    表示一条可用于 Embedding 入库的文档 chunk。
-
-    Attributes:
-        chunk_id:     全局唯一 chunk 标识（由调用方或入库模块生成）
-        group_name:   所属主题分组名（如 "基本信息"、"临床使用"）
-        content:      chunk 的完整文本（已含上下文前缀）
-        metadata:     附加的元数据（来源文件、行号、原始元数据等）
-        source_file:  原始文件路径
-        sheet_name:   工作表名
-        row_index:    原始行号
-    """
-
-    group_name: str
-    content: str
-    metadata: dict
-    source_file: str = ""
-    sheet_name: str = ""
-    row_index: int = -1
-    chunk_id: int | None = None
-    sub_index: int = 0  # 二次分段后的段内序号
-
-    @property
-    def metadata_json(self) -> str:
-        """元数据序列化为 JSON 字符串（用于写入 Milvus VARCHAR 字段）。"""
-        return json.dumps(self.metadata, ensure_ascii=False)
 
 
 @dataclass
@@ -108,9 +80,9 @@ DRUG_INSTRUCTION_GROUPS: list[ChunkGroup] = [
 # ---------- 核心分块器 ----------
 
 
-class ChunkBuilder:
+class ExcelChunker:
     """
-    将 ``ParsedRow`` 按主题分组构建为 ``DocumentChunk`` 列表。
+    将 ``ExcelPasedRow`` 按主题分组构建为 ``DocumentChunk`` 列表。
 
     **工作流程**:
 
@@ -121,12 +93,12 @@ class ChunkBuilder:
 
     典型用法::
 
-        builder = ChunkBuilder(
+        chunker = ExcelChunker(
             chunk_groups=DRUG_INSTRUCTION_GROUPS,
             context_prefix_field="通用名称",
         )
         for parsed_row in parser.parse("药品说明书.xlsx"):
-            chunks = builder.build(parsed_row)
+            chunks = chunker.build(parsed_row)
             # chunks: list[DocumentChunk]
     """
 
@@ -149,14 +121,16 @@ class ChunkBuilder:
         self.chunk_groups = chunk_groups
         self.context_prefix_field = context_prefix_field
         self.section_separator = section_separator
-        self.max_chunk_length = max_chunk_length
-        self.overlap_length = overlap_length
+        self._splitter = TextSplitter(
+            max_chunk_size=max_chunk_length,
+            overlap_size=overlap_length,
+        )
 
-    def build(self, parsed_row: ParsedRow) -> list[DocumentChunk]:
+    def build(self, parsed_row: ExcelPasedRow) -> list[DocumentChunk]:
         """
         将一行解析后的数据构建为 chunk 列表。
 
-        :param parsed_row: ExcelParser 输出的 ParsedRow
+        :param parsed_row: ExcelParser 输出的 ExcelPasedRow
         :return: 该行对应的 DocumentChunk 列表
         """
         # 确定上下文前缀
@@ -186,7 +160,7 @@ class ChunkBuilder:
                 merged_text = f"[{prefix}] {merged_text}"
 
             # 二次分段（如超过长度阈值）
-            text_segments = self._split_if_needed(merged_text)
+            text_segments = self._splitter.split_if_needed(merged_text)
 
             for sub_idx, segment in enumerate(text_segments):
                 chunks.append(
@@ -205,12 +179,12 @@ class ChunkBuilder:
 
     def build_batch(
         self,
-        parsed_rows: Iterator[ParsedRow] | Sequence[ParsedRow],
+        parsed_rows: Iterator[ExcelPasedRow] | Sequence[ExcelPasedRow],
     ) -> Iterator[DocumentChunk]:
         """
         批量构建：对每行调用 ``build``，以迭代器形式产出所有 chunk。
 
-        :param parsed_rows: ParsedRow 的迭代器或序列
+        :param parsed_rows: ExcelPasedRow 的迭代器或序列
         :yields: DocumentChunk
         """
         total_chunks = 0
@@ -225,7 +199,7 @@ class ChunkBuilder:
 
     # ---------- 内部方法 ----------
 
-    def _resolve_prefix(self, parsed_row: ParsedRow) -> str:
+    def _resolve_prefix(self, parsed_row: ExcelPasedRow) -> str:
         """从元数据中提取上下文前缀文本。"""
         if self.context_prefix_field is None:
             return ""
@@ -235,7 +209,7 @@ class ChunkBuilder:
             val = parsed_row.contents.get(self.context_prefix_field)
         return str(val).strip() if val else ""
 
-    def _resolve_groups(self, parsed_row: ParsedRow) -> list[ChunkGroup]:
+    def _resolve_groups(self, parsed_row: ExcelPasedRow) -> list[ChunkGroup]:
         """
         确定分组策略：
         - 如果有预定义分组，使用预定义 + 将未分配的列归入 "其他" 组
@@ -263,46 +237,3 @@ class ChunkBuilder:
             groups.append(ChunkGroup(name="其他", columns=sorted(remaining)))
 
         return groups
-
-    def _split_if_needed(self, text: str) -> list[str]:
-        """
-        如果文本超过 max_chunk_length，按自然断点分段（优先换行 > 句号 > 强制截断）。
-
-        :return: 分段后的文本列表
-        """
-        if len(text) <= self.max_chunk_length:
-            return [text]
-
-        segments: list[str] = []
-        start = 0
-
-        while start < len(text):
-            end = start + self.max_chunk_length
-
-            if end >= len(text):
-                segments.append(text[start:])
-                break
-
-            # 在 [start, end] 范围内寻找最近的断点
-            split_pos = self._find_split_point(text, start, end)
-            segments.append(text[start:split_pos])
-
-            # 带重叠地向前推进
-            start = max(split_pos - self.overlap_length, start + 1)
-
-        return segments
-
-    @staticmethod
-    def _find_split_point(text: str, start: int, end: int) -> int:
-        """
-        在 [start, end] 内寻找最优断点：
-        优先级：换行符 > 。> ！> ？> ；> ， > 强制截断
-        """
-        # 从 end 向前搜索
-        delimiters = ["\n", "。", "！", "？", "；", "，"]
-        for delim in delimiters:
-            pos = text.rfind(delim, start, end)
-            if pos > start:
-                return pos + len(delim)  # 断点在分隔符之后
-        # 找不到自然断点则强制截断
-        return end

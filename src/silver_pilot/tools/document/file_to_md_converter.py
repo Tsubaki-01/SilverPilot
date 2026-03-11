@@ -1,6 +1,6 @@
 """
-模块名称：mineru
-功能描述：MinerU 转Markdown 服务模块，封装了文件上传、提取结果查询、结果下载
+模块名称：file_to_md_converter
+功能描述：MinerU 实现文件转Markdown 服务模块，封装了文件上传、提取结果查询、结果下载
          以及完整的 MD 转换工作流，提供统一的异常处理与日志记录。
 """
 
@@ -116,13 +116,13 @@ class MinerUExtractResponse(BaseModel):
 # ========== 服务类 ==========
 
 
-class MinerUService:
+class FileToMarkdownConverter:
     """
     MinerU Markdown 转换服务。
 
     使用示例::
 
-        service = MinerUService()
+        service = FileToMarkdownConverter()
         results = service.process(
             file_paths=["path/to/document.pdf"],
             output_dir=Path("output"),

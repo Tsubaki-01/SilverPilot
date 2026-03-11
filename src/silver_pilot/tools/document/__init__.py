@@ -1,5 +1,5 @@
-from .excel_parser import ExcelParser, ParsedRow
+from .excel_parser import ExcelParser, ExcelPasedRow
+from .file_to_md_converter import FileToMarkdownConverter
 from .md_cleaner import MarkdownCleaner
-from .mineru import MinerUService
 
-__all__ = ["ExcelParser", "ParsedRow", "MarkdownCleaner", "MinerUService"]
+__all__ = ["ExcelParser", "ExcelPasedRow", "MarkdownCleaner", "FileToMarkdownConverter"]

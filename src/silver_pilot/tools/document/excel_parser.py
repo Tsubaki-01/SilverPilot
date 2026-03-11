@@ -6,7 +6,7 @@
 使用说明: ExcelParser 为主要类，用于解析 Excel 文件。包含以下方法：
 
 - ``__init__(self, config: ExcelConfig)``: 初始化解析器，需提供 Excel 配置。
-- ``parse(self, file_path: Path, sheet_name: str | int | None ) -> Iterator[ParsedRow]``: 解析 Excel 文件，返回逐行解析结果。
+- ``parse(self, file_path: Path, sheet_name: str | int | None ) -> Iterator[ExcelPasedRow]``: 解析 Excel 文件，返回逐行解析结果。
 
 """
 
@@ -218,7 +218,7 @@ class ColumnAnalyzer:
 # ---------- 解析后的数据结构 ----------
 
 
-class ParsedRow:
+class ExcelPasedRow:
     """
     表示一行 Excel 数据经解析后的结构化结果。
 
@@ -249,9 +249,7 @@ class ParsedRow:
     def __repr__(self) -> str:
         meta_keys = list(self.metadata.keys())
         content_keys = list(self.contents.keys())
-        return (
-            f"ParsedRow(row={self.row_index}, meta_keys={meta_keys}, content_keys={content_keys})"
-        )
+        return f"ExcelPasedRow(row={self.row_index}, meta_keys={meta_keys}, content_keys={content_keys})"
 
 
 # ---------- 核心解析器 ----------
@@ -263,7 +261,7 @@ class ExcelParser:
 
     - 读取 Excel 文件（支持 .xlsx / .xls）
     - 自动或按配置识别每列的角色
-    - 逐行输出结构化的 ``ParsedRow``
+    - 逐行输出结构化的 ``ExcelPasedRow``
 
     典型用法::
 
@@ -286,13 +284,13 @@ class ExcelParser:
         file_path: str | Path,
         *,
         sheet_name: str | int | None = None,
-    ) -> Iterator[ParsedRow]:
+    ) -> Iterator[ExcelPasedRow]:
         """
-        解析 Excel 文件，逐行生成 ``ParsedRow``。
+        解析 Excel 文件，逐行生成 ``ExcelPasedRow``。
 
         :param file_path: Excel 文件路径
         :param sheet_name: 指定工作表名称/索引。为 None 时解析所有 sheet。
-        :yields: ParsedRow
+        :yields: ExcelPasedRow
         """
         file_path = Path(file_path)
         if not file_path.exists():
@@ -320,8 +318,8 @@ class ExcelParser:
         df: pd.DataFrame,
         source_file: str,
         sheet_name: str,
-    ) -> Iterator[ParsedRow]:
-        """解析单个 sheet，逐行产出 ParsedRow。"""
+    ) -> Iterator[ExcelPasedRow]:
+        """解析单个 sheet，逐行产出 ExcelPasedRow。"""
         # 推断列角色
         roles = ColumnAnalyzer.infer_roles(df, self.column_config)
 
@@ -356,7 +354,7 @@ class ExcelParser:
             if not metadata and not contents:
                 continue
 
-            yield ParsedRow(
+            yield ExcelPasedRow(
                 row_index=int(idx),
                 metadata=metadata,
                 contents=contents,
