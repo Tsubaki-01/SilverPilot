@@ -799,48 +799,88 @@ class MarkdownCleaner:
     def remove_references(self, lines: list[str]) -> list[str]:
         """移除参考文献 / 引用列表区域。
 
-        从「参考文献」或「References」等标题行开始，向下连续匹配
-        ``[n] ...`` 格式的条目，直到遇到非引用行为止。
+        引入「双重判定」：
+        1. 匹配行首的 [n] 或 n.
+        2. 匹配行内的典型学术文献特征（如 [J], [M], DOI），防止解析工具丢失序号导致漏删。
         """
+        import re
+
+        # 新增：匹配 GB/T 7714 文献类型标识（[J]期刊, [M]专著, [C]会议, [D]学位等）或 DOI
+        inner_ref_pattern = re.compile(r"(\[[JMCNDR]\]|DOI:\s*10\.)", re.IGNORECASE)
+
         cleaned: list[str] = []
         in_ref_zone: bool = False
-        blank_streak: int = 0
+
+        buffer: list[str] = []
+        buffer_non_blank_count: int = 0
+        buffer_blank_streak: int = 0
+
         removed: int = 0
 
         for line in lines:
             s: str = line.strip()
 
-            # 检测参考文献标题
-            if self.reference_header_pattern.match(s):
-                in_ref_zone = True
-                blank_streak = 0
-                removed += 1
-                logger.debug("检测到参考文献区域起始: '{}'", s)
+            if not in_ref_zone:
+                if self.reference_header_pattern.match(s):
+                    in_ref_zone = True
+                    removed += 1
+                    logger.debug("检测到参考文献区域起始: '{}'", s)
+                else:
+                    cleaned.append(line)
                 continue
 
-            if in_ref_zone:
-                # 空行计数，连续 3 个空行则退出
-                if not s:
-                    blank_streak += 1
-                    if blank_streak >= 3:
-                        in_ref_zone = False
-                    continue
+            # ==========================================
+            # 以下是 in_ref_zone == True 的逻辑
+            # ==========================================
 
-                blank_streak = 0
+            # 2. 【关键修正】双重判定：只要符合其一，就是明确的参考文献
+            has_ref_prefix = bool(self.reference_item_pattern.match(s))
+            has_ref_content = bool(inner_ref_pattern.search(s))
 
-                # 匹配引用条目 [n] ... 或 n.
-                if self.reference_item_pattern.match(s):
-                    removed += 1
-                    continue
+            if has_ref_prefix or has_ref_content:
+                # 遇到明确引用，清空之前缓存的折行，并移除
+                removed += len(buffer) + 1
+                buffer.clear()
+                buffer_non_blank_count = 0
+                buffer_blank_streak = 0
+                continue
 
-                # 非引用格式的行 → 退出参考文献区域
+            # 3. 处理空行
+            if not s:
+                buffer.append(line)
+                buffer_blank_streak += 1
+                if buffer_blank_streak >= 3:
+                    cleaned.extend(buffer)
+                    in_ref_zone = False
+                    buffer.clear()
+                    buffer_non_blank_count = 0
+                    buffer_blank_streak = 0
+                continue
+
+            # 4. 处理普通非空行（如果里面既没有 [n] 也没有 [J]/DOI，就先放进缓冲区）
+            buffer.append(line)
+            buffer_non_blank_count += 1
+            buffer_blank_streak = 0
+
+            # 5. 安全退出机制
+            # 如果连续 5 行既没有序号，也没有任何 [J]/DOI 等参考文献特征
+            # 这才说明是真的进入了全新的正文章节
+            if buffer_non_blank_count >= 5:
+                cleaned.extend(buffer)
                 in_ref_zone = False
+                buffer.clear()
+                buffer_non_blank_count = 0
+                buffer_blank_streak = 0
 
-            cleaned.append(line)
+        # 文件结束时收尾处理
+        if in_ref_zone and buffer:
+            removed += len(buffer)
+            buffer.clear()
 
         self.stats.removed_reference_lines += removed
         if removed:
             logger.debug("移除参考文献行: {} 行", removed)
+
         return cleaned
 
     def filter_garbage(self, lines: list[str]) -> list[str]:
