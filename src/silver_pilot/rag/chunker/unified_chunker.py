@@ -168,6 +168,7 @@ class UnifiedChunker:
                     "group_name": c.group_name,
                     "metadata": c.metadata,
                     "source_file": c.source_file,
+                    "doc_type": c.doc_type,
                     "sub_index": c.sub_index,
                 }
                 for c in chunks

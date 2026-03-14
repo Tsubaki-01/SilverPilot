@@ -169,6 +169,9 @@ class ExcelChunker:
                         content=final_content,
                         metadata=parsed_row.metadata.copy(),
                         source_file=parsed_row.source_file,
+                        doc_type="drug_manual"
+                        if "药品" in parsed_row.source_file or "说明书" in parsed_row.source_file
+                        else "medical_guideline",
                         sub_index=sub_idx,
                     )
                 )
