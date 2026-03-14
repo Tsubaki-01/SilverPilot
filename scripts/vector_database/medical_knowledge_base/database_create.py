@@ -19,6 +19,7 @@ fields: list[FieldSchema] = [
     FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=16384),
     # ── 高频过滤字段 ──────────────────────────────────────
     FieldSchema(name="title", dtype=DataType.VARCHAR, max_length=512, nullable=True),
+    FieldSchema(name="doc_type", dtype=DataType.VARCHAR, max_length=64, nullable=True),
     FieldSchema(name="group_name", dtype=DataType.VARCHAR, max_length=256, nullable=True),
     # ── 位置字段 ─────────────────────────────────────────
     FieldSchema(name="sub_index", dtype=DataType.INT32, nullable=True),

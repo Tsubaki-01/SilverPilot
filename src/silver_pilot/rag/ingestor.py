@@ -31,8 +31,8 @@ logger = get_channel_logger(LOG_FILE_DIR, "milvus_ingest")
 # ================= 默认配置 =================
 DEFAULT_COLLECTION = config.MILVUS_COLLECTION_NAME
 DEFAULT_BACKEND = "local"
-DEFAULT_BATCH_SIZE = config.MILVUS_BATCH_SIZE
-MILVUS_CONTENT_MAX_BYTES = config.MILVUS_CONTENT_MAX_BYTES
+DEFAULT_BATCH_SIZE = int(config.MILVUS_BATCH_SIZE)
+MILVUS_CONTENT_MAX_BYTES = int(config.MILVUS_CONTENT_MAX_BYTES)
 
 # ────────────────────────────────────────────────────────────
 # 统计数据类
@@ -109,7 +109,8 @@ class ChunkIngestor:
         stats = IngestStats()
         t_start = time.time()
 
-        for file, raw_chunks in self._iter_json_files(input_dir):
+        for index, (file, raw_chunks) in enumerate(self._iter_json_files(input_dir)):
+            logger.info(f"进度 {index + 1}/{self.total_files} | 文件={file.name}")
             stats.file_count += 1
             file_stats = self._ingest_chunks(file.name, raw_chunks)
             stats.inserted_total += file_stats.inserted_total
@@ -218,20 +219,20 @@ class ChunkIngestor:
             ),
             "group_name": ChunkIngestor._truncate_to_bytes(chunk.get("group_name", ""), 256),
             "source_file": ChunkIngestor._truncate_to_bytes(chunk.get("source_file", ""), 1024),
+            "doc_type": ChunkIngestor._truncate_to_bytes(chunk.get("doc_type", ""), 64),
             "sub_index": chunk.get("sub_index", 0),
             "meta": metadata,
             "created_at": int(time.time()),
         }
 
-    @staticmethod
-    def _iter_json_files(input_dir: Path) -> Generator[tuple[Path, list[dict]], None, None]:
+    def _iter_json_files(self, input_dir: Path) -> Generator[tuple[Path, list[dict]], None, None]:
         """生成器：逐文件 yield (file, chunks)，不全量加载。"""
         json_files = sorted(input_dir.rglob("*.json"))
         if not json_files:
             logger.warning(f"未找到任何 JSON 文件 | dir={input_dir}")
             return
-
-        logger.info(f"发现 {len(json_files)} 个 JSON 文件 | dir={input_dir}")
+        self.total_files = len(json_files)
+        logger.info(f"发现 {self.total_files} 个 JSON 文件 | dir={input_dir}")
 
         for file in json_files:
             try:

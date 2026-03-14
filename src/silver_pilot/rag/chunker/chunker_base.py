@@ -29,6 +29,8 @@ logger = get_channel_logger(LOG_FILE_DIR, "chunker_base")
 
 # ---------- 共享数据结构 ----------
 
+DOC_TYPE = ["drug_manual", "medical_guideline"]
+
 
 @dataclass
 class DocumentChunk:
@@ -40,13 +42,16 @@ class DocumentChunk:
         content:      chunk 的完整文本（已含上下文前缀）
         metadata:     附加的元数据（来源文件、行号、原始元数据等）
         source_file:  原始文件路径
+        doc_type:     文档类型 (["drug_manual", "medical_guideline"])
+        sub_index:    二次分段后的段内序号
     """
 
     group_name: str
     content: str
     metadata: dict
-    source_file: str = ""
-    sub_index: int = 0  # 二次分段后的段内序号
+    source_file: str
+    doc_type: str
+    sub_index: int = 0
 
     @property
     def metadata_json(self) -> str:
