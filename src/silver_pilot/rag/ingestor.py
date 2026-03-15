@@ -12,9 +12,9 @@
     print(stats)
 """
 
+import hashlib
 import json
 import time
-import uuid
 from collections.abc import Generator
 from dataclasses import dataclass
 from pathlib import Path
@@ -211,8 +211,22 @@ class ChunkIngestor:
 
         metadata = chunk.get("metadata") or {}
 
+        # 优先使用 chunk 数据中已有的 chunk_id（由 UnifiedChunker 写入），以保证 upsert 幂等。
+        # 若 chunk_id 缺失（历史数据兼容），则基于稳定字段生成确定性 ID。
+        existing_id = chunk.get("chunk_id")
+        if existing_id:
+            chunk_id = str(existing_id)
+        else:
+            id_source = (
+                f"{chunk.get('source_file', '')}|"
+                f"{chunk.get('group_name', '')}|"
+                f"{chunk.get('sub_index', 0)}|"
+                f"{content}"
+            )
+            chunk_id = hashlib.sha256(id_source.encode()).hexdigest()
+
         return {
-            "chunk_id": str(uuid.uuid4()),
+            "chunk_id": chunk_id,
             "content": ChunkIngestor._truncate_to_bytes(content, MILVUS_CONTENT_MAX_BYTES),
             "title": ChunkIngestor._truncate_to_bytes(
                 metadata.get("doc_title") or metadata.get("标题", ""), 512
