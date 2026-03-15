@@ -116,3 +116,40 @@ class ProcessedQuery:
             if sq != self.rewritten_query:
                 queries.append(sq)
         return queries
+
+
+# ────────────────────────────────────────────────────────────
+# 检索结果相关
+# ────────────────────────────────────────────────────────────
+
+
+class RetrievalSource(StrEnum):
+    """检索结果的来源标识，用于溯源和重排时的来源感知。"""
+
+    NEO4J_GRAPH = "neo4j_graph"
+    MILVUS_QA = "milvus_qa"
+    MILVUS_KNOWLEDGE = "milvus_knowledge"
+
+
+@dataclass
+class RetrievalResult:
+    """
+    单条检索结果的统一抽象。
+
+    无论来自 Neo4j 图谱、Milvus QA 库还是知识库，
+    都统一为此结构，便于下游重排和上下文组装。
+    """
+
+    content: str
+    source: RetrievalSource
+    score: float = 0.0
+    # 附加元数据：来源文件、实体名称、关系路径等
+    metadata: dict = field(default_factory=dict)
+
+    # 重排后的分数（由 Reranker 填充）
+    rerank_score: float | None = None
+
+    @property
+    def final_score(self) -> float:
+        """优先使用重排分数，否则使用原始检索分数。"""
+        return self.rerank_score if self.rerank_score is not None else self.score
