@@ -21,7 +21,7 @@ logger = get_channel_logger(config.LOG_DIR / "rag_retriever", "vector_retriever"
 # ================= 默认配置 =================
 DEFAULT_QA_COLLECTION = config.MILVUS_QA_COLLECTION
 DEFAULT_KB_COLLECTION = config.MILVUS_KB_COLLECTION
-DEFAULT_TOP_K = config.RETRIEVAL_TOP_K
+DEFAULT_TOP_K = config.VECTOR_RETRIEVAL_TOP_K
 
 
 class VectorRetriever:
