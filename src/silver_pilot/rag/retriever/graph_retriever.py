@@ -251,6 +251,7 @@ class GraphRetriever:
 
         query = f"""
         MATCH (n:`{label}` {{name: $name}})-[r]->(m)
+        WHERE m.name IS NOT NULL
         RETURN type(r) AS rel_type, m.name AS target_name, labels(m) AS target_labels
         LIMIT $limit
         """
