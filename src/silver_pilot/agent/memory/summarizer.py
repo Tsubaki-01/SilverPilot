@@ -46,22 +46,26 @@ class ConversationSummarizer:
     KEEP_RECENT_TURNS: int = config.SUMMARY_KEEP_RECENT_TURNS
     """压缩时保留的最近消息轮数。"""
 
+    SUMMARY_MAX_TOKENS: int = config.SUMMARY_MAX_TOKENS
+    """摘要最大长度。"""
+
     def __init__(
         self,
         llm_model: str = DEFAULT_LLM_MODEL,
         api_key: str | None = None,
         max_turns: int = MAX_TURNS_BEFORE_COMPRESS,
         keep_recent: int = KEEP_RECENT_TURNS,
+        summary_max_tokens: int = SUMMARY_MAX_TOKENS,
     ) -> None:
         self.llm_model = llm_model
         self.max_turns = max_turns
         self.keep_recent = keep_recent
+        self.summary_max_tokens = summary_max_tokens
         self.client = ChatOpenAI(
             model=llm_model,  # ty:ignore[unknown-argument]
             api_key=api_key or config.DASHSCOPE_API_KEY,  # ty:ignore[unknown-argument]
             base_url=config.QWEN_URL[DEFAULT_REGION],  # ty:ignore[unknown-argument]
             temperature=0.1,
-            max_tokens=400,
         )
         logger.info(
             f"ConversationSummarizer 初始化完成 | max_turns={max_turns} | keep_recent={keep_recent}"
@@ -133,7 +137,10 @@ class ConversationSummarizer:
         )
 
         try:
-            response = self.client.invoke([HumanMessage(content=prompt)])
+            response = self.client.invoke(
+                [HumanMessage(content=prompt)],
+                max_tokens=self.summary_max_tokens,
+            )
             return f"[对话历史摘要] {response.content}" if response.content else ""
         except Exception as e:
             logger.error(f"摘要压缩 LLM 调用失败: {e}")
