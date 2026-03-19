@@ -37,4 +37,4 @@ messages:
       **生成的回答**:
       {{ generated_answer }}
 
-      请评估回答的忠实度。
+      请评估忠实度。

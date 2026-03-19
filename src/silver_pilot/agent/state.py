@@ -25,6 +25,11 @@ MAX_RETRY_PER_AGENT: int = config.MAX_RETRY_PER_AGENT
 HALLUCINATION_THRESHOLD: float = config.HALLUCINATION_THRESHOLD
 """幻觉检测分数阈值，超过此值触发 Fallback。"""
 
+COMPRESS_THRESHOLD: int = config.COMPRESS_THRESHOLD
+"""消息数超过此阈值时触发对话摘要压缩。"""
+
+KEEP_RECENT_TURNS: int = config.KEEP_RECENT_TURNS
+"""摘要压缩时保留的最近消息轮数。"""
 
 # ────────────────────────────────────────────────────────────
 # 意图类型枚举

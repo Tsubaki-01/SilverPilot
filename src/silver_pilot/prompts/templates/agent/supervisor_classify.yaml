@@ -2,7 +2,6 @@ name: "supervisor_classify"
 description: "Supervisor 意图分类与路由 Prompt，将用户输入分类为一个或多个意图"
 model_config:
   temperature: 0.1
-  model: "qwen3.5-flash"
 
 messages:
   - role: "system"
@@ -34,7 +33,7 @@ messages:
         "risk_level": "low"
       }
 
-      ### Few-Shot Examples
+      ### Examples
 
       **Input**: "阿司匹林一天吃几次，明天早上7点叫我吃药"
       **User Emotion**: NEUTRAL
