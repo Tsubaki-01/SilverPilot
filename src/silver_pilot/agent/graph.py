@@ -108,13 +108,3 @@ def build_agent_graph(checkpointer: object | None = None) -> CompiledStateGraph:
     )
 
     return compiled
-
-
-def build_default_graph() -> CompiledStateGraph:
-    """
-    使用默认配置构建 Agent 图（便捷入口）。
-
-    Returns:
-        编译后的 CompiledStateGraph 实例
-    """
-    return build_agent_graph()

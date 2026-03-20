@@ -63,12 +63,10 @@ EMPTY_FALLBACK: str = "抱歉，我现在无法为您提供回答。请稍后再
 _summarizer: ConversationSummarizer | None = None
 
 
-def _get_summarizer() -> ConversationSummarizer:
-    """获取或创建摘要压缩器单例。"""
+def set_summarizer(summarizer: ConversationSummarizer) -> None:
+    """设置 ConversationSummarizer 单例（由 bootstrap 调用）。"""
     global _summarizer
-    if _summarizer is None:
-        _summarizer = ConversationSummarizer()
-    return _summarizer
+    _summarizer = summarizer
 
 
 # ────────────────────────────────────────────────────────────
@@ -196,10 +194,12 @@ def _check_and_compress(state: AgentState) -> dict | None:
     Returns:
         dict | None: 如果触发压缩则返回更新字典，否则返回 None
     """
-    summarizer = _get_summarizer()
+    if _summarizer is None:
+        logger.warning("Output Guard 未初始化")
+        return None
 
-    if summarizer.should_compress(state):
+    if _summarizer.should_compress(state):
         logger.info("消息历史过长，触发对话摘要压缩")
-        return summarizer.compress(state)
+        return _summarizer.compress(state)
 
     return None

@@ -1,6 +1,6 @@
 """
 模块名称：agent
-功能描述：Silver Pilot Agent 系统核心包，基于 LangGraph 实现 Supervisor 多智能体编排。
+功能描述：Silver Pilot Agent 系统核心包。
 
 架构概览：
     - 感知层（Perception）：多模态输入标准化（文本/语音/图像）
@@ -15,30 +15,32 @@
     - Tools: 工具 Schema 与执行引擎
     - Memory: 摘要压缩 + 画像持久化
 
-使用示例::
 
-    from silver_pilot.agent import build_agent_graph, create_initial_state
+推荐使用方式::
 
-    # 构建图
-    graph = build_agent_graph()
+    from silver_pilot.agent import initialize_agent, create_initial_state
+    from langchain_core.messages import HumanMessage
 
-    # 执行查询
-    initial_state = create_initial_state()
-    initial_state["messages"] = [HumanMessage(content="阿司匹林一天吃几次")]
-    result = graph.invoke(initial_state, config={"configurable": {"thread_id": "session_001"}})
+    # 系统启动（一次性，完成所有组件初始化）
+    graph = initialize_agent()
+
+    # 运行时调用
+    state = create_initial_state()
+    state["messages"] = [HumanMessage(content="阿司匹林一天吃几次")]
+    result = graph.invoke(state, config={"configurable": {"thread_id": "s1"}})
     print(result["final_response"])
 """
 
-from .graph import build_agent_graph, build_default_graph
+from .bootstrap import initialize_agent
+from .graph import build_agent_graph
 from .state import (
     AgentState,
     create_initial_state,
 )
 
 __all__ = [
-    # 核心 API
+    "initialize_agent",
     "build_agent_graph",
-    "build_default_graph",
     "AgentState",
     "create_initial_state",
 ]
