@@ -146,6 +146,7 @@ def _classify_and_dispatch(state: AgentState) -> dict:
         PROMPT_TEMPLATE,
         user_query=user_query,
         user_emotion=state.get("user_emotion", "NEUTRAL"),
+        current_image_context=state.get("current_image_context", ""),
         conversation_summary=state.get("conversation_summary", ""),
         user_profile_summary=build_profile_summary(state.get("user_profile", {})),
     )
