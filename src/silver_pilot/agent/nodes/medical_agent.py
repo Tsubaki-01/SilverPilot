@@ -23,7 +23,7 @@ from silver_pilot.utils import get_channel_logger
 
 from ..llm import call_llm, call_llm_parse
 from ..state import HALLUCINATION_THRESHOLD, AgentState
-from .helpers import build_profile_summary, extract_latest_query
+from .helpers import build_profile_summary, extract_latest_query, messages_to_text
 
 # ================= 日志 =================
 LOG_FILE_DIR: Path = config.LOG_DIR / "agent"
@@ -170,7 +170,7 @@ def _retrieve(state: AgentState, user_query: str) -> RetrievalContext:
         retrieval_result = _pipeline.retrieve(
             user_query=user_query,
             image_context=state.get("current_image_context", ""),
-            conversation_context=state.get("conversation_summary", ""),
+            conversation_context=messages_to_text(state.get("messages", [])),
         )
 
         logger.info(f"RAG 检索完成 | stats={retrieval_result.retrieval_stats}")

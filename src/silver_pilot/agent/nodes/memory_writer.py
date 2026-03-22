@@ -19,7 +19,7 @@ from silver_pilot.utils import get_channel_logger
 from ..llm import call_llm_parse
 from ..memory.user_profile import UserProfileManager
 from ..state import AgentState
-from .helpers import build_profile_summary, content_to_text
+from .helpers import build_profile_summary, messages_to_text
 
 # ================= 日志 =================
 logger = get_channel_logger(config.LOG_DIR / "agent", "memory_writer")
@@ -111,7 +111,7 @@ def memory_writer_node(state: AgentState) -> dict:
 
 
 # ────────────────────────────────────────────────────────────
-# LLM 提取
+# LLM 提取新增的用户健康信息
 # ────────────────────────────────────────────────────────────
 
 
@@ -121,10 +121,7 @@ def _extract_from_conversation(
     """调用 LLM 从近期对话中提取新增的用户健康信息。"""
     # 只取最近一段对话，控制 context 长度
     recent_messages = messages[-(EXTRACT_INTERVAL * 2) :]
-    recent_text = [
-        content_to_text(recent_message.content, state) for recent_message in recent_messages
-    ]
-    conversation_text = "\n".join(recent_text)
+    conversation_text = messages_to_text(recent_messages)
     existing_summary = build_profile_summary(existing_profile)
 
     prompt_messages = prompt_manager.build_prompt(
@@ -136,7 +133,7 @@ def _extract_from_conversation(
 
 
 # ────────────────────────────────────────────────────────────
-# 增量更新
+# 增量更新新增的用户健康信息
 # ────────────────────────────────────────────────────────────
 
 
