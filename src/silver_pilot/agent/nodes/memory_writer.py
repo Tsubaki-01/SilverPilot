@@ -121,7 +121,9 @@ def _extract_from_conversation(
     """调用 LLM 从近期对话中提取新增的用户健康信息。"""
     # 只取最近一段对话，控制 context 长度
     recent_messages = messages[-(EXTRACT_INTERVAL * 2) :]
-    recent_text = [content_to_text(recent_message, state) for recent_message in recent_messages]
+    recent_text = [
+        content_to_text(recent_message.content, state) for recent_message in recent_messages
+    ]
     conversation_text = "\n".join(recent_text)
     existing_summary = build_profile_summary(existing_profile)
 

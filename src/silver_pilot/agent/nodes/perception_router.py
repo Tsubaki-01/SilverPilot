@@ -23,6 +23,33 @@ from ..state import AgentState
 LOG_FILE_DIR: Path = config.LOG_DIR / "agent"
 logger = get_channel_logger(LOG_FILE_DIR, "perception")
 
+# ────────────────────────────────────────────────────────────
+# 惰性初始化
+# ────────────────────────────────────────────────────────────
+_voice_processor: VoiceProcessor | None = None
+_image_processor: VisionProcessor | None = None
+
+
+def _get_voice_processor() -> VoiceProcessor:
+    """获取或创建语音处理器（惰性初始化）。"""
+    global _voice_processor
+    if _voice_processor is None:
+        _voice_processor = VoiceProcessor()
+    return _voice_processor
+
+
+def _get_image_processor() -> VisionProcessor:
+    """获取或创建图像处理器（惰性初始化）。"""
+    global _image_processor
+    if _image_processor is None:
+        _image_processor = VisionProcessor()
+    return _image_processor
+
+
+# ────────────────────────────────────────────────────────────
+# 节点函数
+# ────────────────────────────────────────────────────────────
+
 
 def perception_router_node(state: AgentState) -> dict:
     """
@@ -38,17 +65,23 @@ def perception_router_node(state: AgentState) -> dict:
         state: 当前 AgentState
 
     Returns:
-        dict: 包含 input_modality、user_emotion、current_image_context 的部分状态更新
+        dict: 包含 input_modality、user_emotion、current_image_context、current_audio_context 的部分状态更新
     """
     messages = state["messages"]
     if not messages:
         logger.warning("消息列表为空，跳过感知处理")
-        return {"input_modality": "text", "user_emotion": "NEUTRAL"}
+        return {
+            "input_modality": {"text": False, "voice": False, "image": False},
+            "user_emotion": "NEUTRAL",
+        }
 
     latest_message = messages[-1]
     if not isinstance(latest_message, HumanMessage):
         logger.warning("消息列表最后一条不是 HumanMessage，跳过感知处理")
-        return {"input_modality": "text", "user_emotion": "NEUTRAL"}
+        return {
+            "input_modality": {"text": False, "voice": False, "image": False},
+            "user_emotion": "NEUTRAL",
+        }
 
     content = latest_message.content
 
@@ -64,6 +97,7 @@ def perception_router_node(state: AgentState) -> dict:
     # ── 根据模态分发处理，同时重置状态 ──
     emotion = "NEUTRAL"
     image_context = ""
+    audio_context = ""
     standardized_messages = ""
 
     if modality_info.get("text"):
@@ -76,6 +110,7 @@ def perception_router_node(state: AgentState) -> dict:
         voice_result = _process_audio(modality_info["audio"])
         standardized_messages += "\n\n" + voice_result.content
         emotion = voice_result.emotion
+        audio_context = voice_result.content
         logger.info(
             f"语音转写完成 | text={voice_result.content[:30]}... | "
             f"emotion={emotion} | language={voice_result.language}"
@@ -93,6 +128,7 @@ def perception_router_node(state: AgentState) -> dict:
         "input_modality": input_modality,
         "user_emotion": emotion,
         "current_image_context": image_context,
+        "current_audio_context": audio_context,
     }
 
 
@@ -134,22 +170,27 @@ def _process_audio(audio_urls: list[str]) -> VoiceResult:
     """
     调用 ASR 处理语音输入。
 
+    Args:
+        audio_urls: 语音 URL 列表
+
     Returns:
         VoiceResult: 识别结果
     """
-    _voice_processor = VoiceProcessor()
     # 强制使 audio 只保留一条
-    audio_content = _voice_processor.process(audio_urls[-1])
+    audio_content = _get_voice_processor().process(audio_urls[-1])
     return audio_content
 
 
-def _process_image(image_urls: str) -> str:
+def _process_image(image_urls: list[str]) -> str:
     """
     调用 Qwen 处理图像输入。
 
-    Returns:
+    Args:
+        image_urls: 图像 URL 列表
 
+    Returns:
+        str: 图像识别结果
     """
-    _image_processor = VisionProcessor()
-    image_content = [_image_processor.process(image_url) for image_url in image_urls]
+    processor = _get_image_processor()
+    image_content = [processor.process(image_url) for image_url in image_urls]
     return "\n\n".join(image_content)

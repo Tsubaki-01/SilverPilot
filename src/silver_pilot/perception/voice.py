@@ -71,7 +71,7 @@ class VoiceProcessor:
 
         processor = VoiceProcessor()
 
-        result = processor.precess("/path/to/audio.wav")
+        result = processor.process("/path/to/audio.wav")
 
         print(result.content)  # "我胸口好痛"
         print(result.emotion)  # "FEARFUL"
@@ -114,7 +114,6 @@ class VoiceProcessor:
 
         try:
             import dashscope
-            from dashscope.api_entities.dashscope_response import MultiModalConversationResponse
 
             response = dashscope.MultiModalConversation.call(
                 # 新加坡/美国地域和北京地域的API Key不同。获取API Key：https://help.aliyun.com/zh/model-studio/get-api-key

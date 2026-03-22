@@ -98,16 +98,17 @@ class VisionProcessor:
             prompt: 自定义提示词，为空则使用默认药品 OCR Prompt
 
         Returns:
-            VisionResult: 视觉识别结果
+            str: 视觉识别结果
         """
         file_path = Path(file_path)
         if not file_path.exists():
             logger.error(f"图片文件不存在: {file_path}")
             return ""
 
+        prompt_text = prompt or DEFAULT_PROMPT
         image_file_path = "file://" + str(file_path.absolute())
         messages = [
-            {"role": "user", "content": [{"image": image_file_path}, {"text": DEFAULT_PROMPT}]}
+            {"role": "user", "content": [{"image": image_file_path}, {"text": prompt_text}]}
         ]
 
         logger.info(f"开始识别图像文件: {file_path.name}")
