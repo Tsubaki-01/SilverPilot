@@ -112,7 +112,7 @@ def medical_agent_node(state: AgentState) -> dict:
     generated_answer = _generate_answer(rewritten_query, rag_context, state)
 
     # ── 阶段 3: 忠实度自检 ──
-    hallucination_score = _check_faithfulness(rag_context, generated_answer)
+    hallucination_score = _check_faithfulness(rag_context, generated_answer, state)
 
     if hallucination_score >= HALLUCINATION_THRESHOLD:
         logger.warning(
@@ -197,6 +197,7 @@ def _generate_answer(user_query: str, rag_context: str, state: AgentState) -> st
     messages = prompt_manager.build_prompt(
         GENERATION_PROMPT,
         user_query=user_query,
+        current_image_context=state.get("current_image_context", ""),
         rag_context=rag_context,
         user_profile_summary=profile_summary,
     )
@@ -216,7 +217,7 @@ def _generate_answer(user_query: str, rag_context: str, state: AgentState) -> st
 # ────────────────────────────────────────────────────────────
 
 
-def _check_faithfulness(rag_context: str, generated_answer: str) -> float:
+def _check_faithfulness(rag_context: str, generated_answer: str, state: AgentState) -> float:
     """
     调用 LLM 评估生成回答的忠实度。
 
@@ -230,6 +231,7 @@ def _check_faithfulness(rag_context: str, generated_answer: str) -> float:
     messages = prompt_manager.build_prompt(
         FAITHFULNESS_PROMPT,
         rag_context=rag_context,
+        current_image_context=state.get("current_image_context", ""),
         generated_answer=generated_answer,
     )
 

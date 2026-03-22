@@ -72,6 +72,7 @@ def chat_agent_node(state: AgentState) -> dict:
         PROMPT_TEMPLATE,
         user_query=user_query,
         user_emotion=user_emotion,
+        current_image_context=state.get("current_image_context", ""),
         conversation_summary=state.get("conversation_summary", ""),
     )
 

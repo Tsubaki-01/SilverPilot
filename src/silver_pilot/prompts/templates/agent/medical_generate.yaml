@@ -28,7 +28,9 @@ messages:
   - role: "user"
     content: |
       **用户问题**: {{ user_query }}
-
+      {% if current_image_context %}
+      **图片输入**: {{ current_image_context }}
+      {% endif %}
       **参考资料**:
       {{ rag_context }}
 

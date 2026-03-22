@@ -31,6 +31,9 @@ messages:
     content: |
       **用户说**: {{ user_query }}
       **用户情绪**: {{ user_emotion }}
+      {% if current_image_context %}
+      **图片输入**: {{ current_image_context }}
+      {% endif %}
       {% if conversation_summary %}**对话背景**: {{ conversation_summary }}{% endif %}
 
       请以"小银"身份回复。
