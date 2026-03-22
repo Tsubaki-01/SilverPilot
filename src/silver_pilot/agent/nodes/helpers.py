@@ -83,3 +83,17 @@ def content_to_text(message: AnyMessage) -> str:
         return result_text
 
     return str(content)
+
+
+def messages_to_text(messages: list[AnyMessage]) -> str:
+    """将 LangChain Message 列表格式化为纯文本。"""
+    role_map: dict[type[AnyMessage], str] = {
+        HumanMessage: "用户",
+        AIMessage: "助手",
+        SystemMessage: "系统",
+    }
+    lines: list[str] = []
+    for msg in messages:
+        role = role_map.get(type(msg), "未知")
+        lines.append(f"{role}: {content_to_text(msg)}")
+    return "\n\n".join(lines)

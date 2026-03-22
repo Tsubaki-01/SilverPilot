@@ -7,12 +7,13 @@
 
 from pathlib import Path
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
 
 from silver_pilot.config import config
 from silver_pilot.utils import get_channel_logger
 
 from ..llm import call_llm
+from ..nodes.helpers import messages_to_text
 from ..state import COMPRESS_THRESHOLD, KEEP_RECENT_TURNS, SUMMARY_MAX_TOKENS, AgentState
 
 # ================= 日志 =================
@@ -97,7 +98,7 @@ class ConversationSummarizer:
             "messages": [SystemMessage(content=f"[对话历史摘要] {summary}")] + recent_messages,
         }
 
-    def _llm_summarize(self, messages: list) -> str:
+    def _llm_summarize(self, messages: list[AnyMessage]) -> str:
         """
         调用 LLM 将消息列表压缩为摘要。
 
@@ -108,7 +109,7 @@ class ConversationSummarizer:
             str: 压缩后的摘要文本
         """
         # 将消息格式化为对话文本
-        conversation_text = self._format_messages(messages)
+        conversation_text = messages_to_text(messages)
 
         prompt = (
             "请将以下对话历史压缩为一段简洁的摘要，保留关键信息：\n"
@@ -132,13 +133,3 @@ class ConversationSummarizer:
         except Exception as e:
             logger.error(f"摘要压缩 LLM 调用失败: {e}")
             return f"[自动摘要失败，保留最近 {self.keep_recent} 轮对话]"
-
-    @staticmethod
-    def _format_messages(messages: list) -> str:
-        """将 LangChain Message 列表格式化为纯文本。"""
-        role_map = {HumanMessage: "用户", AIMessage: "助手", SystemMessage: "系统"}
-        lines: list[str] = []
-        for msg in messages:
-            role = role_map.get(type(msg), "未知")
-            lines.append(f"{role}: {msg.content}")
-        return "\n".join(lines)
