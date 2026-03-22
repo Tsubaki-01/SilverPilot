@@ -102,12 +102,12 @@ def perception_router_node(state: AgentState) -> dict:
     standardized_messages = ""
     needs_rewrite = False
 
-    if modality_info.get("text"):
+    if input_modality.get("text"):
         logger.info("感知路由 | 检测到文本输入")
         standardized_messages += " ".join(modality_info["text"])
         logger.info(f"感知路由 | 文本输入：{modality_info['text'][:30]}...")
 
-    if modality_info.get("audio"):
+    if input_modality.get("audio"):
         logger.info("感知路由 | 检测到语音输入")
         audio_result = _process_audio(modality_info["audio"])
         standardized_messages += "\n\n" + audio_result.content
@@ -119,7 +119,7 @@ def perception_router_node(state: AgentState) -> dict:
         )
         needs_rewrite = True
 
-    if modality_info.get("image"):
+    if input_modality.get("image"):
         logger.info("感知路由 | 检测到图像输入")
         image_result = _process_image(modality_info["image"])
         image_context = image_result
@@ -166,11 +166,18 @@ def _get_modality_info(content: str | list[dict]) -> dict[str, list[str]]:
         for item in content:
             if isinstance(item, dict):
                 if item.get("type") == "text":
-                    modality_info["text"].append(item.get("text", ""))
+                    # 处理空格输入
+                    text = item.get("text", "")
+                    if text.strip():
+                        modality_info["text"].append(text)
                 elif item.get("type") == "image_url":
-                    modality_info["image"].append(item.get("image_url", ""))
+                    image_url = item.get("image_url", "")
+                    if image_url:
+                        modality_info["image"].append(image_url)
                 elif item.get("type") == "audio":
-                    modality_info["audio"].append(item.get("audio", ""))
+                    audio = item.get("audio", "")
+                    if audio:
+                        modality_info["audio"].append(audio)
     else:
         modality_info["text"].append(content)
     return modality_info

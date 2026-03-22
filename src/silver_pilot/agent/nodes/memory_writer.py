@@ -94,9 +94,7 @@ def memory_writer_node(state: AgentState) -> dict:
     logger.info(f"触发画像提取 | user={user_id}")
 
     # LLM 提取
-    extracted = _extract_from_conversation(
-        state.get("messages", []), state.get("user_profile", {}), state
-    )
+    extracted = _extract_from_conversation(state.get("messages", []), state.get("user_profile", {}))
     if extracted is None:
         logger.warning("LLM 画像提取失败，跳过")
         return {}
@@ -116,7 +114,7 @@ def memory_writer_node(state: AgentState) -> dict:
 
 
 def _extract_from_conversation(
-    messages: list[AnyMessage], existing_profile: dict, state: AgentState
+    messages: list[AnyMessage], existing_profile: dict
 ) -> ProfileExtractOutput | None:
     """调用 LLM 从近期对话中提取新增的用户健康信息。"""
     # 只取最近一段对话，控制 context 长度
