@@ -31,12 +31,13 @@
     print(result["final_response"])
 """
 
-from .bootstrap import initialize_agent
-from .graph import build_agent_graph
-from .state import (
-    AgentState,
-    create_initial_state,
-)
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .bootstrap import initialize_agent
+    from .graph import build_agent_graph
+    from .state import AgentState, create_initial_state
+
 
 __all__ = [
     "initialize_agent",
@@ -44,3 +45,23 @@ __all__ = [
     "AgentState",
     "create_initial_state",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "initialize_agent":
+        from .bootstrap import initialize_agent
+
+        return initialize_agent
+    if name == "build_agent_graph":
+        from .graph import build_agent_graph
+
+        return build_agent_graph
+    if name == "AgentState":
+        from .state import AgentState
+
+        return AgentState
+    if name == "create_initial_state":
+        from .state import create_initial_state
+
+        return create_initial_state
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

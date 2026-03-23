@@ -8,9 +8,13 @@
     - VisionProcessor: 图像理解 + OCR 提取（Qwen API）
 """
 
-from .audio import AudioProcessor, AudioResult
-from .embedder import BaseEmbedder, create_embedder
-from .vision import VisionProcessor
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .audio import AudioProcessor, AudioResult
+    from .embedder import BaseEmbedder, create_embedder
+    from .vision import VisionProcessor
+
 
 __all__ = [
     # Embedder
@@ -22,3 +26,27 @@ __all__ = [
     # Vision
     "VisionProcessor",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "AudioProcessor":
+        from .audio import AudioProcessor
+
+        return AudioProcessor
+    if name == "AudioResult":
+        from .audio import AudioResult
+
+        return AudioResult
+    if name == "BaseEmbedder":
+        from .embedder import BaseEmbedder
+
+        return BaseEmbedder
+    if name == "create_embedder":
+        from .embedder import create_embedder
+
+        return create_embedder
+    if name == "VisionProcessor":
+        from .vision import VisionProcessor
+
+        return VisionProcessor
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
