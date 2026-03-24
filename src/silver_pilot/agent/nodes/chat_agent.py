@@ -23,7 +23,7 @@ from silver_pilot.utils import get_channel_logger
 
 from ..llm import call_llm
 from ..state import AgentState
-from .helpers import extract_latest_query, messages_to_text
+from .helpers import extract_latest_query, get_conversation_context
 
 # ================= 日志 =================
 LOG_FILE_DIR: Path = config.LOG_DIR / "agent"
@@ -74,9 +74,7 @@ def chat_agent_node(state: AgentState) -> dict:
         user_query=user_query,
         user_emotion=user_emotion,
         current_image_context=state.get("current_image_context", ""),
-        conversation_summary=messages_to_text(
-            state.get("messages", [])[-CHAT_AGENT_SUMMARY_TURNS:]
-        ),
+        conversation_summary=get_conversation_context(state.get("messages", [])),
     )
 
     # 调用 LLM

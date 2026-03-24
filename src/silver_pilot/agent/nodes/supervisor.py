@@ -21,7 +21,7 @@ from silver_pilot.utils import get_channel_logger
 
 from ..llm import call_llm_parse
 from ..state import MAX_SUPERVISOR_LOOPS, AgentState
-from .helpers import build_profile_summary, extract_latest_query
+from .helpers import build_profile_summary, extract_latest_query, get_conversation_context
 
 # ================= 日志 =================
 LOG_FILE_DIR: Path = config.LOG_DIR / "agent"
@@ -154,7 +154,7 @@ def _classify_and_dispatch(state: AgentState) -> dict:
         user_query=user_query,
         user_emotion=state.get("user_emotion", "NEUTRAL"),
         current_image_context=state.get("current_image_context", ""),
-        conversation_summary=state.get("conversation_summary", ""),
+        conversation_summary=get_conversation_context(state.get("messages", [])),
         user_profile_summary=build_profile_summary(state.get("user_profile", {})),
     )
 

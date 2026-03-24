@@ -112,3 +112,31 @@ def messages_to_text(messages: list[AnyMessage]) -> str:
         role = role_map.get(type(msg), "未知")
         lines.append(f"{role}: {content_to_text(msg)}")
     return "\n\n".join(lines)
+
+
+def get_conversation_context(messages: list, max_turns: int = 6) -> str:
+    """
+    提取本轮对话之前的历史消息作为上下文。
+
+    从后向前找到最后一条 HumanMessage（即本轮用户输入），
+    取它之前的 max_turns 条消息作为历史上下文。
+    这样既不包含本轮用户输入，也不包含本轮其他 agent 的回答。
+
+    时间线示意:
+        [历史消息...] [本轮 HumanMessage] [本轮 agent 回答...]
+        ^^^^^^^^^^^^
+        只取这部分
+    """
+    # 找到最后一条 HumanMessage 的位置
+    last_human_idx = -1
+    for i in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[i], HumanMessage):
+            last_human_idx = i
+            break
+
+    if last_human_idx <= 0:
+        return ""
+
+    # 取它之前的 max_turns 条
+    history = messages[max(0, last_human_idx - max_turns) : last_human_idx]
+    return messages_to_text(history)
