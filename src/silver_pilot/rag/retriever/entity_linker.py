@@ -181,7 +181,6 @@ class EntityLinker:
                 self._indices[label] = {"index": index, "names": names}
                 total_nodes += len(names)
                 loaded_labels += 1
-                logger.debug(f"  [{label}] 加载成功，包含 {len(names)} 个实体")
 
             except Exception as e:
                 logger.error(f"加载 [{label}] 索引失败: {e}")

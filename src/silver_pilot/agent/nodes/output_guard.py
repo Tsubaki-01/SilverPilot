@@ -88,7 +88,7 @@ def output_guard_node(state: AgentState) -> dict:
         state: 当前 AgentState
 
     Returns:
-        dict: 包含 final_response、safety_flags（可选 messages 和 conversation_summary）的状态更新
+        dict: 包含本轮的状态更新与重置
     """
     final_response = "\n".join(state.get("sub_response", []))
     safety_flags = list(state.get("safety_flags", []))

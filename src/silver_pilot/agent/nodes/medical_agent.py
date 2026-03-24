@@ -204,6 +204,7 @@ def _generate_answer(user_query: str, rag_context: str, state: AgentState) -> st
     # 构建用户画像摘要
     profile_summary = build_profile_summary(state.get("user_profile", {}))
 
+    logger.info("开始生成回答")
     messages = prompt_manager.build_prompt(
         GENERATION_PROMPT,
         user_query=user_query,
