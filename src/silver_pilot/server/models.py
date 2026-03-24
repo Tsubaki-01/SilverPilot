@@ -105,3 +105,15 @@ class ReminderItem(BaseModel):
     repeat: str = "none"
     active: bool = True
     done: bool = False
+
+
+class CommitReviewRequest(BaseModel):
+    """提交审查请求。"""
+
+    commit_hashes: list[str]
+
+
+class CommitReviewResponse(BaseModel):
+    """提交审查响应。"""
+
+    report: str

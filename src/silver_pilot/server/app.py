@@ -10,13 +10,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 import time
 import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -24,7 +25,10 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
+from .commit_review import build_commit_review_report
 from .models import (
+    CommitReviewRequest,
+    CommitReviewResponse,
     HealthOverview,
     MessageRecord,
     ReminderItem,
@@ -37,6 +41,7 @@ from .session_store import SessionStore
 
 DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "static"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 if not STATIC_DIR.exists():
     STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 
@@ -192,6 +197,17 @@ async def get_health(user_id: str) -> HealthOverview:
 @app.get("/api/reminders/{user_id}", response_model=list[ReminderItem])
 async def get_reminders(user_id: str) -> list[ReminderItem]:
     return [ReminderItem(**r) for r in _DEMO_REMINDERS]
+
+
+@app.post("/api/commit-review", response_model=CommitReviewResponse)
+async def commit_review(req: CommitReviewRequest) -> CommitReviewResponse:
+    try:
+        report = build_commit_review_report(REPO_ROOT, req.commit_hashes)
+        return CommitReviewResponse(report=report)
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(status_code=400, detail=f"commit 不存在或不可读取: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ════════════════════════════════════════════════
