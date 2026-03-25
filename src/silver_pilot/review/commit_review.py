@@ -15,6 +15,7 @@ _REQUIRED_HEADINGS = [
     "🚀 优化建议",
     "❓ 需要明确的疑问",
 ]
+_COMMIT_ID_DISPLAY_LENGTH = 7
 
 
 @dataclass(frozen=True)
@@ -24,6 +25,7 @@ class CommitSnapshot:
     commit_id: str
     subject: str
     files: tuple[str, ...]
+    patch_text: str
 
 
 def parse_commit_ids(raw: str) -> list[str]:
@@ -37,20 +39,38 @@ def parse_commit_ids(raw: str) -> list[str]:
 
 
 def _run_git(repo_path: Path, args: list[str]) -> str:
-    completed = subprocess.run(
-        ["git", "-C", str(repo_path), *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_path), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        raise ValueError(
+            f"git command failed: {' '.join(args)}; "
+            f"repo={repo_path}; stderr={stderr or 'N/A'}"
+        ) from exc
     return completed.stdout.strip()
 
 
 def _load_snapshot(repo_path: Path, commit_id: str) -> CommitSnapshot:
     subject = _run_git(repo_path, ["show", "-s", "--format=%s", commit_id])
     files_raw = _run_git(repo_path, ["show", "--pretty=format:", "--name-only", commit_id])
+    patch_text = _run_git(repo_path, ["show", "--no-color", "--format=", commit_id])
     files = tuple(line.strip() for line in files_raw.splitlines() if line.strip())
-    return CommitSnapshot(commit_id=commit_id, subject=subject, files=files)
+    return CommitSnapshot(commit_id=commit_id, subject=subject, files=files, patch_text=patch_text)
+
+
+def _patch_contains(snapshots: list[CommitSnapshot], needle: str) -> bool:
+    target = needle.lower()
+    return any(target in snapshot.patch_text.lower() for snapshot in snapshots)
+
+
+def _patch_has_key_assignment(snapshots: list[CommitSnapshot], key: str) -> bool:
+    pattern = re.compile(rf"^[+\-]\s*{re.escape(key)}\s*:", re.IGNORECASE | re.MULTILINE)
+    return any(pattern.search(snapshot.patch_text) for snapshot in snapshots)
 
 
 def _compatibility_lines(snapshots: list[CommitSnapshot]) -> list[str]:
@@ -59,12 +79,18 @@ def _compatibility_lines(snapshots: list[CommitSnapshot]) -> list[str]:
 
     if any(path.startswith("src/silver_pilot/server/") for path in files):
         lines.append(
-            "- **API 与接口**：`src/silver_pilot/server/app.py` 与 `models.py` 的改动引入了新的 REST/WebSocket 协议面，"
-            "属于接口扩展型变更。若前端仍使用旧字段名（例如 `imagePath`/`audioPath`），会出现兼容性问题。"
+            "- **API 与接口**：服务端模块（如 `app.py`/`models.py`）存在新增或调整，"
+            "属于接口层演进。建议调用方按最新路由与字段契约联调，避免协议漂移。"
         )
         lines.append(
-            "- **数据与状态**：`session_store.py` 采用进程内内存状态；重启后会话丢失，"
-            "这不影响代码级向后兼容，但会影响运行时状态兼容预期。"
+            "- **数据与状态**：若本次改动涉及会话状态管理（如 `session_store.py`），"
+            "需确认状态持久化策略与历史行为是否一致，以避免升级后状态预期变化。"
+        )
+
+    if {"src/silver_pilot/server/models.py", "static/api-connector.js"}.issubset(files):
+        lines.append(
+            "- **前后端协同**：同一提交同时修改前端连接器与后端模型定义，"
+            "建议确保前后端版本成对发布，避免单侧升级导致字段不匹配。"
         )
 
     if "QLoRA/train_qlora_elderly_care.yaml" in files:
@@ -83,22 +109,19 @@ def _conflict_lines(snapshots: list[CommitSnapshot]) -> list[str]:
     files = {path for snapshot in snapshots for path in snapshot.files}
     lines: list[str] = []
 
-    if "src/silver_pilot/server/session_store.py" in files:
+    if "src/silver_pilot/server/session_store.py" in files and _patch_contains(snapshots, "_messages"):
         lines.append(
-            "- **并发与状态冲突**：`SessionStore` 基于普通字典，在多 worker 或高并发下可能出现更新竞争；"
-            "触发条件是同一会话并发写入消息。"
+            "- **并发与状态冲突**：提交涉及会话消息集合更新逻辑。"
+            "触发条件是同一会话高并发写入时，若缺少同步机制可能产生竞态。"
         )
 
-    if {
-        "src/silver_pilot/server/models.py",
-        "static/api-connector.js",
-    }.issubset(files):
+    if {"src/silver_pilot/server/models.py", "static/api-connector.js"}.issubset(files):
         lines.append(
             "- **逻辑冲突**：前后端消息协议耦合较紧（例如 `WSIncoming`/`WSOutgoing`），"
             "触发条件是任一侧字段变更未同步发布。"
         )
 
-    if "src/silver_pilot/server/app.py" in files:
+    if "src/silver_pilot/server/app.py" in files and _patch_contains(snapshots, "global _graph"):
         lines.append(
             "- **作用域与全局状态**：模块级 `_graph`、`_store` 由多个请求共享；"
             "触发条件是未来引入多进程部署或热重载时，状态一致性要求提升。"
@@ -114,41 +137,40 @@ def _optimization_lines(snapshots: list[CommitSnapshot]) -> list[str]:
     files = {path for snapshot in snapshots for path in snapshot.files}
     snippets: list[str] = []
 
-    if "src/silver_pilot/server/session_store.py" in files:
+    if "src/silver_pilot/server/session_store.py" in files and _patch_contains(snapshots, "_messages"):
         snippets.append(
-            "- `SessionStore` 可增加最小化并发保护，避免并发写入时的状态竞态。\n"
+            "- `SessionStore` 可增加最小化并发保护，避免并发写入时的状态竞态（示例）。\n"
             "\n"
             "```python\n"
             "# Before\n"
-            "self._messages[session_id].append(message)\n"
+            "messages[session_id].append(message)\n"
             "\n"
             "# After\n"
-            "with self._lock:\n"
-            "    self._messages[session_id].append(message)\n"
+            "with session_lock:\n"
+            "    messages[session_id].append(message)\n"
             "```"
         )
 
-    if "src/silver_pilot/server/app.py" in files:
+    if "src/silver_pilot/server/app.py" in files and _patch_has_key_assignment(
+        snapshots, "allow_origins"
+    ):
         snippets.append(
-            "- CORS 当前为 `allow_origins=[\"*\"]`，可切换白名单配置以降低暴露面。\n"
+            "- 若提交中使用宽松 CORS（`allow_origins=[\"*\"]`），建议改为白名单以降低暴露面。\n"
             "\n"
             "```python\n"
             "# Before\n"
-            "app.add_middleware(CORSMiddleware, allow_origins=[\"*\"], allow_methods=[\"*\"], allow_headers=[\"*\"])\n"
+            "allow_origins = [\"*\"]\n"
             "\n"
             "# After\n"
-            "app.add_middleware(\n"
-            "    CORSMiddleware,\n"
-            "    allow_origins=settings.cors_origins,\n"
-            "    allow_methods=[\"GET\", \"POST\", \"DELETE\"],\n"
-            "    allow_headers=[\"Authorization\", \"Content-Type\"],\n"
-            ")\n"
+            "allow_origins = settings.cors_origins\n"
             "```"
         )
 
-    if "QLoRA/train_qlora_elderly_care.yaml" in files:
+    if "QLoRA/train_qlora_elderly_care.yaml" in files and _patch_has_key_assignment(
+        snapshots, "bf16"
+    ):
         snippets.append(
-            "- 训练配置建议补充环境约束校验（GPU/精度），减少训练启动后失败的成本。\n"
+            "- 训练配置建议显式声明精度降级策略，减少环境不一致导致的启动失败（示例）。\n"
             "\n"
             "```yaml\n"
             "# Before\n"
@@ -156,8 +178,7 @@ def _optimization_lines(snapshots: list[CommitSnapshot]) -> list[str]:
             "\n"
             "# After\n"
             "bf16: true\n"
-            "validate_cuda_capability: true\n"
-            "fallback_precision: fp16\n"
+            "fp16: false  # 与 bf16 二选一，由部署环境决定\n"
             "```"
         )
 
@@ -184,7 +205,9 @@ def _questions(snapshots: list[CommitSnapshot]) -> list[str]:
 
 def render_commit_review_report(snapshots: list[CommitSnapshot]) -> str:
     """Render a markdown report that matches the requested structure."""
-    commit_list = ", ".join(snapshot.commit_id[:7] for snapshot in snapshots)
+    commit_list = ", ".join(
+        snapshot.commit_id[:_COMMIT_ID_DISPLAY_LENGTH] for snapshot in snapshots
+    )
     purpose = "；".join(snapshot.subject for snapshot in snapshots)
 
     summary = [
