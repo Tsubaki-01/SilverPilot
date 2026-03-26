@@ -4,13 +4,10 @@
          通信提供类型安全的数据契约。
 """
 
-from __future__ import annotations
-
 import time
 from typing import Any
 
 from pydantic import BaseModel, Field
-
 
 # ────────────────────────────────────────────────────────────
 # Session

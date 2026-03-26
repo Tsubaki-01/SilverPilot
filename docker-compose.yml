@@ -13,7 +13,7 @@ services:
       NEO4J_dbms_security_procedures_allowlist: apoc.*
     volumes:
       - ./docker_data/neo4j/neo4j_data:/data
-      - ./docker_data/neo4j/neo4j_plugins:/plugins # 挂载 Neo4j 插件目录，否则 APOC 插件无法加载
+      - ./docker_data/neo4j/neo4j_plugins:/plugins
       - ./docker_data/neo4j/neo4j_conf:/conf
     networks:
       - silver_net
@@ -23,7 +23,24 @@ services:
       timeout: 5s
       retries: 5
 
-  # --- 2. 向量数据库: Milvus (Standalone版) ---
+  # --- 2. Redis (会话管理 + 用户画像) ---
+  redis:
+    image: redis:7.2-alpine
+    container_name: silver_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - ./docker_data/redis/redis_data:/data
+    networks:
+      - silver_net
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- 3. 向量数据库: Milvus (Standalone版) ---
   etcd:
     image: quay.io/coreos/etcd:v3.5.5
     container_name: silver_etcd
@@ -63,7 +80,7 @@ services:
     volumes:
       - ./docker_data/milvus/milvus_data:/var/lib/milvus
     ports:
-      - "19530:19530" # Milvus API 端口
+      - "19530:19530"
     depends_on:
       - "etcd"
       - "minio"
@@ -71,12 +88,12 @@ services:
       - silver_net
 
   milvus-attu:
-    image: zilliz/attu:v2.3.6 # 版本和 Milvus 2.3.3 匹配
+    image: zilliz/attu:v2.3.6
     container_name: silver_milvus_attu
     ports:
-      - "8000:3000" # 宿主机 8000 端口映射到 Attu 的 3000 端口
+      - "8000:3000"
     environment:
-      MILVUS_URL: silver_milvus:19530 # 连接 Milvus 容器的地址（容器名+默认端口）
+      MILVUS_URL: silver_milvus:19530
     depends_on:
       - "milvus"
     networks:

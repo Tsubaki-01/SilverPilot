@@ -7,12 +7,13 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .summarizer import ConversationSummarizer
-    from .user_profile import UserProfileManager
+    from .user_profile import ProfileManagerProtocol, UserProfileManager
 
 
 __all__ = [
     "ConversationSummarizer",
     "UserProfileManager",
+    "ProfileManagerProtocol",
 ]
 
 
@@ -25,4 +26,8 @@ def __getattr__(name: str) -> Any:
         from .user_profile import UserProfileManager
 
         return UserProfileManager
+    if name == "ProfileManagerProtocol":
+        from .user_profile import ProfileManagerProtocol
+
+        return ProfileManagerProtocol
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
