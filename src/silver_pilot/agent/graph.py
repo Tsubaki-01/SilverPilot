@@ -5,12 +5,12 @@
 
 图拓扑结构：
     perception_router → supervisor ⇄ {medical, device, chat, emergency}
-    supervisor → output_guard → memory_writer → END
+    supervisor → response_synthesizer → output_guard → memory_writer → END
 
     Supervisor 通过 conditional_edges 实现动态路由：
     - 首次进入：LLM 分类意图后路由到对应子 Agent
     - 子 Agent 完成后回到 Supervisor，检查意图队列
-    - 队列清空后进入 output_guard → memory_writer → END
+    - 队列清空后进入 response_synthesizer → output_guard → memory_writer → END
 """
 
 from pathlib import Path
@@ -30,6 +30,7 @@ from .nodes import (
     memory_writer_node,
     output_guard_node,
     perception_router_node,
+    response_synthesizer_node,
     route_by_intent,
     supervisor_node,
 )
@@ -63,6 +64,7 @@ def build_agent_graph(checkpointer: object | None = None) -> CompiledStateGraph:
     graph.add_node("device_agent", device_agent_node)
     graph.add_node("chat_agent", chat_agent_node)
     graph.add_node("emergency_agent", emergency_agent_node)
+    graph.add_node("response_synthesizer", response_synthesizer_node)
     graph.add_node("output_guard", output_guard_node)
     graph.add_node("memory_writer", memory_writer_node)
 
@@ -82,7 +84,7 @@ def build_agent_graph(checkpointer: object | None = None) -> CompiledStateGraph:
             "device": "device_agent",
             "chat": "chat_agent",
             "emergency": "emergency_agent",
-            "done": "output_guard",
+            "done": "response_synthesizer",
         },
     )
 
@@ -91,6 +93,7 @@ def build_agent_graph(checkpointer: object | None = None) -> CompiledStateGraph:
         graph.add_edge(agent_node, "supervisor")
 
     # ── 输出链路 ──
+    graph.add_edge("response_synthesizer", "output_guard")
     graph.add_edge("output_guard", "memory_writer")
     graph.add_edge("memory_writer", END)
 
@@ -103,8 +106,8 @@ def build_agent_graph(checkpointer: object | None = None) -> CompiledStateGraph:
 
     logger.info(
         "Agent 状态图构建完成 | "
-        "节点数=8 | "
-        "拓扑: perception → supervisor ⇄ agents → guard → memory → END"
+        "节点数=9 | "
+        "拓扑: perception → supervisor ⇄ agents → synthesizer → guard → memory → END"
     )
 
     return compiled

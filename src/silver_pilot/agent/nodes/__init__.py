@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from .memory_writer import memory_writer_node
     from .output_guard import output_guard_node
     from .perception_router import perception_router_node
+    from .response_synthesizer import response_synthesizer_node
     from .supervisor import route_by_intent, supervisor_node
 
 
@@ -21,6 +22,7 @@ __all__ = [
     "device_agent_node",
     "chat_agent_node",
     "emergency_agent_node",
+    "response_synthesizer_node",
     "output_guard_node",
     "memory_writer_node",
 ]
@@ -55,6 +57,10 @@ def __getattr__(name: str) -> Any:
         from .perception_router import perception_router_node
 
         return perception_router_node
+    if name == "response_synthesizer_node":
+        from .response_synthesizer import response_synthesizer_node
+
+        return response_synthesizer_node
     if name == "route_by_intent":
         from .supervisor import route_by_intent
 
