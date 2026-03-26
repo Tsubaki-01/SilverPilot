@@ -20,7 +20,7 @@ class SessionStore:
     使用示例::
 
         store = SessionStore()
-        meta = store.create("药品咨询", user_id="user_001")
+        meta = store.create_session("药品咨询", user_id="user_001")
         store.add_message(meta.session_id, MessageRecord(role="user", content="你好"))
         sessions = store.list_sessions("user_001")
     """
