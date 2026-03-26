@@ -1,20 +1,20 @@
 """
 模块名称：user_profile
-功能描述：长期用户画像管理器，基于 SQLite 实现跨会话持久化的用户健康画像存储。
-         记录用户的慢性病、过敏史、当前用药、紧急联系人、交互习惯等信息，
-         供 Supervisor 在会话初始化时加载，并在会话结束时由 MemoryWriter 更新。
+功能描述：长期用户画像管理器。SQLite 后端实现 + Protocol 接口定义。
+         RedisStore 实现了相同的 Protocol，可直接替换注入。
 
 设计说明：
-    - 开发阶段使用 SQLite（零依赖），生产阶段可切换 Redis（API 一致）
-    - 用户画像以 JSON 序列化存储，字段灵活可扩展
-    - 支持增量更新：仅修改变更的字段，不覆盖整体画像
+    - UserProfileManager 保持原有类名和接口不变（SQLite 后端）
+    - ProfileManagerProtocol 定义鸭子类型接口
+    - bootstrap.py 注入时可传入 RedisStore 实例（符合 Protocol）
+    - 开发阶段使用 SQLite（零依赖），生产阶段可切换 Redis
 """
 
 import json
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from silver_pilot.config import config
 from silver_pilot.utils import get_channel_logger
@@ -25,6 +25,25 @@ logger = get_channel_logger(LOG_FILE_DIR, "user_profile")
 
 # ================= 默认配置 =================
 DEFAULT_DB_PATH: Path = config.DATA_DIR / "agent" / "user_profiles.db"
+
+
+# ────────────────────────────────────────────────────────────
+# 协议定义（鸭子类型接口）
+# ────────────────────────────────────────────────────────────
+
+
+@runtime_checkable
+class ProfileManagerProtocol(Protocol):
+    """
+    用户画像管理器的接口协议。
+
+    UserProfileManager (SQLite) 和 RedisStore 均实现此协议，
+    可在 bootstrap 和 memory_writer 中互相替换。
+    """
+
+    def get_profile(self, user_id: str) -> dict[str, Any]: ...
+    def update_profile(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any]: ...
+    def delete_profile(self, user_id: str) -> bool: ...
 
 
 # ────────────────────────────────────────────────────────────
@@ -48,7 +67,7 @@ DEFAULT_PROFILE: dict[str, Any] = {
 
 
 # ────────────────────────────────────────────────────────────
-# 用户画像管理器
+# UserProfileManager（SQLite 后端，保持原有类名）
 # ────────────────────────────────────────────────────────────
 
 
@@ -67,26 +86,18 @@ class UserProfileManager:
             "chronic_diseases": ["高血压", "糖尿病"],
         })
 
-    生命周期：
-        - Supervisor 初始化时调用 ``get_profile()`` 加载到 AgentState.user_profile
-        - MemoryWriter 节点调用 ``update_profile()`` 持久化本次会话新增的信息
+    替换方案：
+        生产环境可使用 RedisStore（实现了相同的 ProfileManagerProtocol），
+        通过 bootstrap.py 的 profile_manager 参数注入。
     """
 
     def __init__(self, db_path: Path | str | None = None) -> None:
-        """
-        初始化用户画像管理器。
-
-        Args:
-            db_path: SQLite 数据库文件路径。为 None 时使用默认路径。
-        """
         self.db_path = Path(db_path) if db_path else DEFAULT_DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-
         self._init_db()
         logger.info(f"UserProfileManager 初始化完成 | db={self.db_path}")
 
     def _init_db(self) -> None:
-        """初始化数据库表结构。"""
         with sqlite3.connect(str(self.db_path)) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS user_profiles (
@@ -99,17 +110,6 @@ class UserProfileManager:
             conn.commit()
 
     def get_profile(self, user_id: str) -> dict[str, Any]:
-        """
-        获取用户画像。
-
-        如果用户不存在，自动创建默认画像并返回。
-
-        Args:
-            user_id: 用户唯一标识
-
-        Returns:
-            dict: 用户画像字典
-        """
         with sqlite3.connect(str(self.db_path)) as conn:
             cursor = conn.execute(
                 "SELECT profile FROM user_profiles WHERE user_id = ?",
@@ -122,63 +122,70 @@ class UserProfileManager:
             logger.debug(f"加载用户画像 | user_id={user_id}")
             return profile
 
-        # 用户不存在，创建默认画像
         logger.info(f"用户不存在，创建默认画像 | user_id={user_id}")
         return self._create_default_profile(user_id)
 
     def update_profile(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any]:
-        """
-        增量更新用户画像。
-
-        仅修改 ``updates`` 中指定的字段，其余字段保持不变。
-        对于列表类型字段（如 chronic_diseases），执行合并去重。
-
-        Args:
-            user_id: 用户唯一标识
-            updates: 需要更新的字段字典
-
-        Returns:
-            dict: 更新后的完整画像
-        """
         profile = self.get_profile(user_id)
         now = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        # 增量合并逻辑
         for key, value in updates.items():
-            if key in ("user_id", "created_at", "updated_at"):
-                continue  # 保护字段不允许外部修改
+            if not isinstance(key, str):
+                logger.warning(f"忽略非法画像字段（key 非字符串） | user_id={user_id} | key={key}")
+                continue
 
-            if isinstance(value, list) and isinstance(profile.get(key), list):
-                # 列表字段：合并去重
-                existing = profile[key]
+            if key in ("user_id", "created_at", "updated_at"):
+                continue
+
+            existing_value = profile.get(key)
+
+            if existing_value is None:
+                profile[key] = value
+            elif not isinstance(existing_value, type(value)):
+                logger.warning(
+                    "类型不匹配字段 | user_id=%s | field=%s | existing_type=%s | new_type=%s",
+                    user_id,
+                    key,
+                    type(existing_value).__name__,
+                    type(value).__name__,
+                )
+                continue
+            elif isinstance(existing_value, list) and isinstance(value, list):
+                existing = existing_value
                 for item in value:
                     if item not in existing:
                         existing.append(item)
                 profile[key] = existing
-            elif isinstance(value, dict) and isinstance(profile.get(key), dict):
-                # 字典字段：深度合并
-                profile[key].update(value)
+            elif isinstance(existing_value, dict):
+                profile[key] = self._deep_merge_dict(existing_value, value)
             else:
-                # 其余字段：直接覆盖
                 profile[key] = value
 
         profile["updated_at"] = now
-
-        # 持久化
         self._save_profile(user_id, profile)
-        logger.info(f"用户画像已更新 | user_id={user_id} | 更新字段={list(updates.keys())}")
+        logger.info(f"用户画像已更新 | user_id={user_id} | fields={list(updates.keys())}")
         return profile
 
-    def delete_profile(self, user_id: str) -> bool:
+    def _deep_merge_dict(self, base: dict[str, Any], updates: dict[str, Any]) -> dict[str, Any]:
         """
-        删除用户画像。
+        递归合并字典：当双方字段均为 dict 时继续向下合并。
 
         Args:
-            user_id: 用户唯一标识
+            base: 基础字典。
+            updates: 需要覆盖或合并的新字典。
 
         Returns:
-            bool: 是否删除成功
+            dict: 合并后的新字典，不会原地修改入参 base。
         """
+        merged = dict(base)
+        for key, value in updates.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = self._deep_merge_dict(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
+    def delete_profile(self, user_id: str) -> bool:
         with sqlite3.connect(str(self.db_path)) as conn:
             cursor = conn.execute(
                 "DELETE FROM user_profiles WHERE user_id = ?",
@@ -194,7 +201,7 @@ class UserProfileManager:
         return deleted
 
     def _create_default_profile(self, user_id: str) -> dict[str, Any]:
-        """创建并持久化默认用户画像。"""
+        """创建默认用户画像并保存到数据库。"""
         now = time.strftime("%Y-%m-%d %H:%M:%S")
         profile = {**DEFAULT_PROFILE, "user_id": user_id, "created_at": now, "updated_at": now}
         self._save_profile(user_id, profile)

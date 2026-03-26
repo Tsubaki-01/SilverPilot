@@ -22,7 +22,7 @@ from silver_pilot.prompts import prompt_manager
 from silver_pilot.utils import get_channel_logger
 
 from ..llm import call_llm_parse
-from ..memory.user_profile import UserProfileManager
+from ..memory.user_profile import ProfileManagerProtocol
 from ..state import AgentState
 from .helpers import build_profile_summary, filter_turn_messages, messages_to_text
 
@@ -36,12 +36,18 @@ EXTRACT_INTERVAL: int = config.MEMORY_WRITER_EXTRACT_INTERVAL
 
 PROMPT_TEMPLATE: str = "agent/profile_extract"
 
-# ── 模块级单例 ──
-_manager: UserProfileManager | None = None
+# ── 模块级单例（类型为 Protocol，兼容 SQLite 和 Redis 两种后端）──
+_manager: ProfileManagerProtocol | None = None
 
 
-def set_profile_manager(manager: UserProfileManager) -> None:
-    """注入 UserProfileManager 实例（系统启动时调用）。"""
+def set_profile_manager(manager: ProfileManagerProtocol) -> None:
+    """
+    注入 ProfileManager 实例（系统启动时调用）。
+
+    Args:
+        manager: 实现了 ProfileManagerProtocol 的实例。
+                 可以是 UserProfileManager (SQLite) 或 RedisStore。
+    """
     global _manager
     _manager = manager
 

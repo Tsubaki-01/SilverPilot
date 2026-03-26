@@ -21,7 +21,7 @@ from silver_pilot.utils import get_channel_logger
 
 from .graph import build_agent_graph
 from .memory.summarizer import ConversationSummarizer
-from .memory.user_profile import UserProfileManager
+from .memory.user_profile import ProfileManagerProtocol, UserProfileManager
 from .nodes.device_agent import set_executor
 from .nodes.medical_agent import set_pipeline
 from .nodes.memory_writer import set_profile_manager
@@ -35,7 +35,7 @@ def initialize_agent(
     *,
     checkpointer: object | None = None,
     skip_rag: bool = False,
-    profile_manager: UserProfileManager | None = None,
+    profile_manager: ProfileManagerProtocol | None = None,
 ) -> CompiledStateGraph:
     """
     Agent 系统统一启动入口。
@@ -43,8 +43,9 @@ def initialize_agent(
     Args:
         checkpointer: LangGraph Checkpointer。为 None 时用 MemorySaver（内存）。
         skip_rag: 是否跳过 RAGPipeline 初始化。
-        profile_manager: 外部传入的 UserProfileManager 实例。
-                        为 None 时内部创建（使用 Redis 或 SQLite，取决于配置）。
+        profile_manager: 外部传入的画像管理器实例（需实现 ProfileManagerProtocol）。
+                        可以是 UserProfileManager (SQLite) 或 RedisStore。
+                        为 None 时内部创建 UserProfileManager (SQLite)。
 
     Returns:
         编译后的 LangGraph 图实例
@@ -71,7 +72,7 @@ def initialize_agent(
     # ── 2. RAGPipeline 外的组件 ──
     logger.info("[2/3] 初始化 RAGPipeline 外的组件...")
 
-    # UserProfileManager: 优先使用外部传入（如 RedisStore 包装后的实例），否则内部创建
+    # UserProfileManager: 优先使用外部传入（如 RedisStore），否则内部创建 SQLite 版
     if profile_manager is None:
         profile_manager = UserProfileManager()
     set_profile_manager(profile_manager)
