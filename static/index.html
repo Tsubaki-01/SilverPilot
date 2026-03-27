@@ -43,6 +43,7 @@ input,textarea{font-family:inherit}
 .icon-btn.sm{width:36px;height:36px;border-radius:10px}
 .icon-btn svg{width:20px;height:20px}
 .icon-btn.sm svg{width:17px;height:17px}
+.icon-btn[disabled]{opacity:.5;pointer-events:none}
 .badge{position:absolute;top:-3px;right:-3px;min-width:16px;height:16px;border-radius:8px;background:var(--red);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px}
 
 /* ═════ HOME ═════ */
@@ -89,14 +90,21 @@ input,textarea{font-family:inherit}
 .sess-pn.open{transform:translateX(0)}
 .sess-hdr{padding:18px 16px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
 .sess-hdr h3{font-size:16px;font-weight:700}
+.sess-title{display:flex;flex-direction:column;gap:3px}
+.sess-user{font-size:11px;color:var(--text-hint)}
+.sess-acts{display:flex;align-items:center;gap:6px}
 .sess-list{flex:1;overflow-y:auto;padding:8px}
 .sess-item{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:var(--r-md);cursor:pointer;transition:background .15s;margin-bottom:2px}
 .sess-item:hover{background:var(--bg-hover)}
 .sess-item.active{background:var(--accent-bg)}
 .sess-item.active .sess-name{color:var(--accent);font-weight:600}
+.sess-main{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
 .sess-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .sess-name{font-size:14px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sess-date{font-size:11px;color:var(--text-hint)}
+.sess-del{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--text-hint);transition:all .15s;flex-shrink:0}
+.sess-del:hover{background:var(--red-bg);color:var(--red)}
+.sess-del svg{width:14px;height:14px}
 .new-sess{margin:8px;padding:12px;border-radius:var(--r-md);background:var(--accent-bg);color:var(--accent);font-size:14px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s}
 .new-sess:hover{background:var(--accent-lt)}
 
@@ -138,6 +146,20 @@ input,textarea{font-family:inherit}
 .msg-time{font-size:11px;color:var(--text-hint)}
 .msg-src{font-size:10px;padding:2px 7px;border-radius:6px;background:var(--green-bg);color:var(--green);font-weight:500}
 .msg-img{width:170px;height:110px;border-radius:var(--r-md);background:var(--bg-input);border:1px dashed var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--text-hint);font-size:11px;margin-bottom:5px}
+.upload-buffer { display:none; gap:10px; padding: 12px 16px 4px; background: transparent; flex-wrap: wrap; }
+.upload-buffer.has-items { display: flex; }
+.buf-item { position: relative; background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px; padding: 6px 12px 6px 6px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text); box-shadow: 0 2px 6px rgba(0,0,0,0.04); transition: transform 0.2s, box-shadow 0.2s; }
+.buf-item:hover { transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.06); }
+.buf-item img { width: 36px; height: 36px; object-fit: cover; border-radius: 8px; }
+.buf-item .buf-icon { width: 36px; height: 36px; display:flex; align-items:center; justify-content:center; background:var(--accent-bg); color:var(--accent); border-radius:8px; }
+.buf-item .buf-icon svg { width: 20px; height: 20px; margin: 0; }
+.buf-del { position: absolute; top: -6px; right: -6px; background: var(--red); color: #fff; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.2s, transform 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.buf-item:hover .buf-del { opacity: 1; }
+.buf-del:hover { transform: scale(1.1); }
+.buf-del svg { width: 10px; height: 10px; margin: 0; }
+.buf-text { display: flex; flex-direction: column; justify-content: center; margin-right: 4px; }
+.buf-title { font-weight: 500; }
+.buf-sub { font-size: 10px; color: var(--text-hint); margin-top: 2px; }
 
 .typing{display:none;align-items:center;gap:8px;margin-bottom:14px}
 .typing.show{display:flex}
@@ -286,11 +308,20 @@ input,textarea{font-family:inherit}
   <div class="chat-page">
     <div class="sess-ov" id="sOv" onclick="tSess()"></div>
     <div class="sess-pn" id="sPn">
-      <div class="sess-hdr"><h3>对话记录</h3><button class="icon-btn sm" onclick="tSess()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+      <div class="sess-hdr">
+        <div class="sess-title">
+          <h3>对话记录</h3>
+          <div class="sess-user mono" id="sessUserId">user: default_user</div>
+        </div>
+        <div class="sess-acts">
+          <button class="icon-btn sm" id="refreshSessBtn" onclick="refreshSess()" aria-label="刷新会话"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10M1 14l5.37 4.36A9 9 0 0 0 20.49 15"/></svg></button>
+          <button class="icon-btn sm" onclick="tSess()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+        </div>
+      </div>
       <div class="sess-list" id="sList"></div>
       <button class="new-sess" onclick="newSess()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 新对话</button>
     </div>
-    <div class="demo-bar"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><span><b>Silver Pilot</b> Agent Demo</span><div class="demo-btns"><button class="demo-btn" onclick="runDemo('medical')">医疗问答</button><button class="demo-btn" onclick="runDemo('compound')">复合意图</button><button class="demo-btn" onclick="runDemo('device')">设备控制</button><button class="demo-btn" onclick="runDemo('image')">图片识别</button></div></div>
+    <div class="demo-bar"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><span><b>Silver Pilot</b> Agent Demo</span><div class="demo-btns"><button class="demo-btn" onclick="runDemo('medical')">医疗问答</button><button class="demo-btn" onclick="runDemo('compound')">复合意图</button><button class="demo-btn" onclick="runDemo('device')">设备控制</button></div></div>
     <div class="chat-hdr">
       <button class="icon-btn sm" onclick="tSess()" aria-label="对话列表"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
       <div class="chat-av"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div>
@@ -303,15 +334,18 @@ input,textarea{font-family:inherit}
       <div class="typing" id="typEl"><div class="msg-av" style="background:linear-gradient(135deg,var(--accent),#E8956D)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div><div class="typing-dots"><span></span><span></span><span></span></div></div>
     </div>
     <div class="input-bar">
+      <div class="upload-buffer" id="upBuf"></div>
       <div class="input-tools">
-        <button class="icon-btn sm" onclick="runDemo('image')" aria-label="拍照"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
-        <button class="icon-btn sm" onclick="runDemo('image')" aria-label="图片"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></button>
+        <button class="icon-btn sm" onclick="document.getElementById('imgUp').click()" aria-label="拍照"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
+        <button class="icon-btn sm" onclick="document.getElementById('imgUp').click()" aria-label="图片"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></button>
+        <input type="file" id="imgUp" accept="image/*" style="display:none" onchange="SilverPilotAPI.uploadFile(event, 'image')">
+        <input type="file" id="audUp" accept="audio/*" style="display:none" onchange="SilverPilotAPI.uploadFile(event, 'audio')">
       </div>
       <div class="input-row">
         <input type="text" class="input-field" id="iField" placeholder="输入消息，或点击麦克风说话…" onkeydown="if(event.key==='Enter')handleSend()">
         <button class="send-btn voice" id="sBtn" onclick="handleClick()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="sSvg"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></button>
       </div>
-      <div class="rec-hint" id="recH">正在聆听…情绪: <b id="emoTag">NEUTRAL</b></div>
+
     </div>
     <button class="dr-tog" id="drTog" onclick="tDr()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>Agent 过程</button>
     <div class="drawer" id="dr">
@@ -346,13 +380,43 @@ input,textarea{font-family:inherit}
 
 <script>
 const REMS=[{t:'07:00',m:'吃阿司匹林',r:'每天',d:1,c:'var(--green)'},{t:'08:00',m:'测血糖',r:'每天',d:1,c:'var(--blue)'},{t:'09:30',m:'晨练散步30分钟',r:'每天',d:1,c:'var(--yellow)'},{t:'12:00',m:'吃二甲双胍',r:'每天',d:0,c:'var(--accent)'},{t:'15:00',m:'去社区医院复查',r:'不重复',d:0,c:'var(--red)'},{t:'18:00',m:'吃二甲双胍',r:'每天',d:0,c:'var(--accent)'}];
-let SS=[{id:1,nm:'阿司匹林咨询',dt:'今天',ms:[{r:'a',c:'您好！我是小银，您的健康助手。有什么可以帮您的吗？',t:'09:00'}]},{id:2,nm:'血压监测提醒',dt:'昨天',ms:[{r:'a',c:'您好！我是小银。',t:'14:00'},{r:'u',c:'帮我设个每天早上量血压的提醒',t:'14:01'},{r:'a',c:'✅ 已设置提醒：每天早上 8:00 — 测量血压',t:'14:01'}]},{id:3,nm:'糖尿病饮食咨询',dt:'3天前',ms:[{r:'a',c:'您好！我是小银。',t:'10:00'},{r:'u',c:'糖尿病人能吃西瓜吗',t:'10:02'},{r:'a',c:'少量可以，建议每次不超过200克。注意监测餐后血糖。\n\n（温馨提示：具体饮食方案请遵医嘱。）',t:'10:02',s:['知识图谱']}]}];
-let aS=1,isRec=0,drOpen=0,curDT='pipe',DD=null;
+var SS=[];
+var aS='',drOpen=0,curDT='pipe',DD=null;
+
+function _guessUserId(){
+  try{
+    const q=new URLSearchParams(window.location.search);
+    return q.get('user_id')||window.SILVER_PILOT_USER_ID||window.localStorage?.getItem('silver_pilot_user_id')||'default_user';
+  }catch{return 'default_user'}
+}
+function setSessUser(uid){
+  const el=document.getElementById('sessUserId');
+  if(el)el.textContent=`user: ${uid||'default_user'}`;
+}
+async function refreshSess(){
+  const btn=document.getElementById('refreshSessBtn');
+  if(btn)btn.disabled=true;
+  try{
+    const api=window.SilverPilotAPI;
+    if(api&&typeof api.refreshSessions==='function'){
+      await api.refreshSessions({preferCurrent:true});
+      const uid=typeof api.getUserId==='function'?api.getUserId():_guessUserId();
+      setSessUser(uid);
+    }else{
+      rSess();
+    }
+  }catch(e){
+    console.error('[UI] refresh sessions failed:',e);
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}
 
 function init(){
   const h=new Date().getHours();
   document.getElementById('greetTxt').textContent=(h<6?'夜深了':h<11?'早上好，':h<14?'中午好，':h<18?'下午好，':'晚上好，');
   document.getElementById('remList').innerHTML=REMS.map((r,i)=>`<div class="rem-item" style="animation:msgIn .3s ease ${i*.04}s both${r.d?';opacity:.55':''}"><div class="rem-dot" style="background:${r.d?'var(--text-hint)':r.c}"></div><div style="flex:1;min-width:0"><div class="rem-msg"${r.d?' style="text-decoration:line-through"':''}>${r.m}</div><div class="rem-sub">${r.r}${r.d?' · 已完成':''}</div></div><div class="rem-time">${r.t}</div></div>`).join('');
+  setSessUser(_guessUserId());
   rSess();loadS(aS);
   document.getElementById('iField').addEventListener('input',updBtn);
 }
@@ -365,26 +429,46 @@ function go(i){
 
 function rSess(){
   const cs=['var(--accent)','var(--blue)','var(--green)','var(--yellow)','var(--red)'];
-  document.getElementById('sList').innerHTML=SS.map((s,i)=>`<div class="sess-item${s.id===aS?' active':''}" onclick="loadS(${s.id});tSess()"><div class="sess-dot" style="background:${cs[i%cs.length]}"></div><div class="sess-name">${s.nm}</div><div class="sess-date">${s.dt}</div></div>`).join('');
+  if(!SS.length){
+    document.getElementById('sList').innerHTML='<div style="padding:16px;color:var(--text-hint);font-size:13px">暂无会话，点击下方 新对话 创建。</div>';
+    return;
+  }
+  document.getElementById('sList').innerHTML=SS.map((s,i)=>`<div class="sess-item${String(s.id)===String(aS)?' active':''}" onclick='loadS(${JSON.stringify(String(s.id))});tSess()'><div class="sess-main"><div class="sess-dot" style="background:${cs[i%cs.length]}"></div><div class="sess-name">${s.nm}</div><div class="sess-date">${s.dt}</div></div><button class="sess-del" onclick='delSess(event,${JSON.stringify(String(s.id))})' aria-label="删除会话"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button></div>`).join('');
 }
 function tSess(){const o=document.getElementById('sOv'),p=document.getElementById('sPn'),v=p.classList.contains('open');o.classList.toggle('open',!v);p.classList.toggle('open',!v)}
 function loadS(id){
-  aS=id;const s=SS.find(x=>x.id===id);if(!s)return;
+  const sid=String(id);
+  aS=sid;const s=SS.find(x=>String(x.id)===sid);if(!s)return;
   document.getElementById('cTitle').textContent=s.nm;
   document.getElementById('mCtn').innerHTML='';
-  s.ms.forEach(m=>addMsg(m.r==='u'?'user':'assistant',m.c,{time:m.t,sources:m.s,noSave:1}));
+  s.ms.forEach(m=>addMsg(m.r==='u'?'user':'assistant',m.c,{time:m.t,sources:m.s,noSave:1,isImage:m.img,isAudio:m.aud,imgUrl:m.url}));
   rSess();DD=null;updDr();document.getElementById('drTog').classList.remove('has');
 }
-function newSess(){const id=Date.now();SS.unshift({id,nm:'新对话',dt:'刚刚',ms:[{r:'a',c:'您好！我是小银，有什么可以帮您的吗？',t:now()}]});loadS(id);tSess()}
-function clrChat(){const s=SS.find(x=>x.id===aS);if(s){s.ms=[{r:'a',c:'对话已清空，开始新对话吧。',t:now()}]}loadS(aS)}
+function newSess(){const id=String(Date.now());SS.unshift({id,nm:'新对话',dt:'刚刚',ms:[{r:'a',c:'您好！我是小银，有什么可以帮您的吗？',t:now()}]});loadS(id);tSess()}
+function delSess(ev,id,skipConfirm){
+  if(ev){ev.stopPropagation();ev.preventDefault()}
+  const sid=String(id);
+  const ok=skipConfirm?true:(typeof window.confirm==='function'?window.confirm('确认删除该会话吗？'):true);
+  if(!ok)return;
+  const idx=SS.findIndex(x=>String(x.id)===sid);
+  if(idx<0)return;
+  SS.splice(idx,1);
+  if(!SS.length){
+    const nid=String(Date.now());
+    SS.push({id:nid,nm:'新对话',dt:'刚刚',ms:[{r:'a',c:'您好！我是小银，有什么可以帮您的吗？',t:now()}]});
+  }
+  if(String(aS)===sid)loadS(SS[0].id);else rSess();
+}
+function clrChat(){const s=SS.find(x=>String(x.id)===String(aS));if(s){s.ms=[{r:'a',c:'对话已清空，开始新对话吧。',t:now()}]}loadS(aS)}
 
 function addMsg(role,c,o={}){
   const el=document.getElementById('mCtn'),u=role==='user',t=o.time||now();
   let src='';if(o.sources?.length)src=o.sources.map(s=>`<span class="msg-src">${s}</span>`).join('');
-  let img='';if(o.isImage)img=`<div class="msg-img"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>药瓶图片 (OCR)</div>`;
+  let img='';if(o.isImage&&o.imgUrl)img=`<div class="msg-img" style="border:none;background:none;height:auto"><img src="${o.imgUrl}" style="max-width:100%; border-radius:8px"></div>`;else if(o.isImage)img=`<div class="msg-img"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>发送了图片</div>`;
+  if(o.isAudio)img+=`<div class="msg-img" style="height:auto;padding:12px;flex-direction:row;gap:8px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>发送了录音</div>`;
   el.insertAdjacentHTML('beforeend',`<div class="msg${u?' user':''}"><div class="msg-av" style="${u?'background:var(--bg-input);color:var(--text-sub)':'background:linear-gradient(135deg,var(--accent),#E8956D);color:#fff'}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${u?'<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>':'<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>'}</svg></div><div class="msg-body" style="min-width:0">${img}<div class="msg-bub">${esc(c)}</div><div class="msg-meta"${u?' style="justify-content:flex-end"':''}><span class="msg-time">${t}</span>${src}</div></div></div>`);
   scr();
-  if(!o.noSave){const s=SS.find(x=>x.id===aS);if(s){s.ms.push({r:u?'u':'a',c,t,s:o.sources});if(u&&s.nm==='新对话')s.nm=c.substring(0,12);rSess()}}
+  if(!o.noSave){const s=SS.find(x=>String(x.id)===String(aS));if(s){s.ms.push({r:u?'u':'a',c,t,s:o.sources});if(u&&s.nm==='新对话')s.nm=c.substring(0,12);rSess()}}
 }
 
 function showHTL(sc){
@@ -407,9 +491,8 @@ function sTyp(){document.getElementById('typEl').classList.add('show');scr()}
 function hTyp(){document.getElementById('typEl').classList.remove('show')}
 
 function handleSend(){const f=document.getElementById('iField');if(!f.value.trim())return;addMsg('user',f.value.trim());f.value='';updBtn();sTyp();setTimeout(()=>{hTyp();addMsg('assistant','我正在处理，请稍等…\n\n（点击顶部示例按钮体验完整 Agent 流程）')},1200)}
-function handleClick(){document.getElementById('iField').value.trim()?handleSend():togRec()}
-function updBtn(){const f=document.getElementById('iField'),b=document.getElementById('sBtn'),s=document.getElementById('sSvg');if(f.value.trim()){b.className='send-btn ready';s.innerHTML='<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>'}else if(!isRec){b.className='send-btn voice';s.innerHTML='<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>'}}
-function togRec(){isRec=!isRec;const b=document.getElementById('sBtn'),h=document.getElementById('recH');if(isRec){b.className='send-btn recording';h.classList.add('show');setTimeout(()=>{if(isRec){isRec=0;b.className='send-btn voice';h.classList.remove('show');document.getElementById('iField').value='我最近血压有点高，需要注意什么？';updBtn()}},3000)}else{b.className='send-btn voice';h.classList.remove('show')}}
+function handleClick(){const hx=window.PendingUploads&&(window.PendingUploads.image||window.PendingUploads.audio);if(document.getElementById('iField').value.trim()||hx)handleSend();else document.getElementById('audUp').click()}
+function updBtn(){const f=document.getElementById('iField'),b=document.getElementById('sBtn'),s=document.getElementById('sSvg'),hx=window.PendingUploads&&(window.PendingUploads.image||window.PendingUploads.audio);if(f.value.trim()||hx){b.className='send-btn ready';s.innerHTML='<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>'}else{b.className='send-btn voice';s.innerHTML='<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>'}}
 
 function tDr(){drOpen=!drOpen;document.getElementById('dr').classList.toggle('open',drOpen);document.getElementById('mArea').classList.toggle('dr-open',drOpen);scr()}
 function dT(t){curDT=t;document.querySelectorAll('.drawer-tab').forEach(x=>x.classList.toggle('active',x.dataset.t===t));updDr()}
@@ -424,8 +507,7 @@ function rEnt(){const el=document.getElementById('dBody'),es=DD?.entities;if(!es
 const D={
 medical:{u:'阿司匹林一天吃几次？有什么副作用？',debug:{pipeline:[{name:'Perception',color:'var(--n-per)',time:'12ms'},{name:'Supervisor',color:'var(--n-sup)',time:'320ms'},{name:'Medical Agent',color:'var(--n-med)',time:'1.8s'},{name:'Output Guard',color:'var(--n-grd)',time:'45ms'}],intents:[{type:'MEDICAL_QUERY',query:'阿司匹林的用法用量',priority:1,color:'var(--n-med)'},{type:'MEDICAL_QUERY',query:'阿司匹林的副作用',priority:2,color:'var(--n-med)'}],entities:[{name:'阿司匹林',label:'Drug',linked:!0,neo4j_name:'阿司匹林',score:1.0},{name:'副作用',label:'AdverseReactions',linked:!0,neo4j_name:'不良反应',score:.92}],rag:{query_rewrite:'阿司匹林的用法用量及不良反应',graph_results:[{content:'阿司匹林用法：口服，每日1次，100mg',source:'知识图谱',layer:'local_fact',score:1.0},{content:'不良反应包括胃肠道反应、出血倾向',source:'知识图谱',layer:'local_fact',score:1.0},{content:'[推理路径] 阿司匹林→胃肠道出血←消化性溃疡',source:'推理路径',layer:'reasoning_path',score:.85}],vector_results:[{content:'阿司匹林 口服 成人一次0.3~0.6g...',source:'医学文献',score:.91}],hallucination_score:.08,verdict:'pass'},tools:[]},r:'根据医学资料：\n\n**用法用量**\n口服，每日1次，每次100mg，饭后服用 [知识图谱]\n\n**常见副作用**\n· 胃肠道反应：恶心、呕吐、腹痛\n· 出血倾向：长期服用可能增加出血风险\n· 过敏反应：皮疹（较少见）[知识图谱]\n\n注意：可能加重消化性溃疡风险 [推理路径]\n\n（温馨提示：具体用药请遵医嘱。）',s:['知识图谱','医学文献','推理路径']},
 compound:{u:'阿司匹林能和降压药一起吃吗？帮我明早7点设个吃药提醒',debug:{pipeline:[{name:'Perception',color:'var(--n-per)',time:'10ms'},{name:'Supervisor',color:'var(--n-sup)',time:'450ms'},{name:'Medical Agent',color:'var(--n-med)',time:'2.1s'},{name:'Supervisor ↩',color:'var(--n-sup)',time:'15ms'},{name:'Device Agent',color:'var(--n-dev)',time:'380ms'},{name:'Output Guard',color:'var(--n-grd)',time:'52ms'}],intents:[{type:'MEDICAL_QUERY',query:'阿司匹林与降压药的药物相互作用',priority:1,color:'var(--n-med)'},{type:'DEVICE_CONTROL',query:'设置明天早上7点吃药提醒',priority:2,color:'var(--n-dev)'}],entities:[{name:'阿司匹林',label:'Drug',linked:!0,neo4j_name:'阿司匹林',score:1.0},{name:'降压药',label:'Drug',linked:!0,neo4j_name:'降压药',score:.95}],rag:{query_rewrite:'阿司匹林与降压药的药物相互作用',graph_results:[{content:'[推理路径] 阿司匹林可能减弱部分降压药效果',source:'推理路径',layer:'reasoning_path',score:.92},{content:'药物相互作用包括与抗凝药、降压药等',source:'知识图谱',layer:'local_fact',score:1.0}],vector_results:[{content:'阿司匹林与ACEI/ARB联用可能降低降压效果...',source:'医学文献',score:.89}],hallucination_score:.12,verdict:'pass'},tools:[{name:'set_reminder',args:{time:'2024-01-16T07:00:00',message:'该吃阿司匹林了',repeat:'daily'},risk:'low',result:{status:'created',message:'已设置提醒'}}]},r:'帮您处理两件事：\n\n**阿司匹林与降压药能否同服？**\n可以，但阿司匹林可能减弱部分降压药效果 [推理路径]。建议错开30分钟服用 [医学文献]。\n\n**提醒已设置**\n明天早上 7:00 — 该吃阿司匹林了（每天）\n\n（温馨提示：具体用药请遵医嘱。）',s:['知识图谱','推理路径','医学文献']},
-device:{u:'把客厅空调关了',debug:{pipeline:[{name:'Perception',color:'var(--n-per)',time:'8ms'},{name:'Supervisor',color:'var(--n-sup)',time:'280ms'},{name:'Device Agent',color:'var(--n-dev)',time:'520ms'},{name:'Output Guard',color:'var(--n-grd)',time:'18ms'}],intents:[{type:'DEVICE_CONTROL',query:'关闭客厅空调',priority:1,color:'var(--n-dev)'}],entities:[],rag:null,tools:[{name:'control_device',args:{device_id:'living_room_ac',action:'off',value:''},risk:'medium',needs_confirmation:!0,confirmation_message:'⚠️ 中风险操作：即将关闭客厅空调，确认执行吗？'}]},response_confirmed:'✅ 客厅空调已关闭',response_cancelled:'好的，已取消操作。',s:[]},
-image:{u:'[图片] 这个药瓶上写的什么？',isImg:1,debug:{pipeline:[{name:'Perception',color:'var(--n-per)',time:'1.2s'},{name:'Supervisor',color:'var(--n-sup)',time:'350ms'},{name:'Medical Agent',color:'var(--n-med)',time:'1.6s'},{name:'Output Guard',color:'var(--n-grd)',time:'38ms'}],intents:[{type:'MEDICAL_QUERY',query:'图片中药品的用法用量',priority:1,color:'var(--n-med)'}],perception:{image_context:'药品名称: 盐酸二甲双胍片\n规格: 0.5g × 30片\n生产企业: 中美上海施贵宝'},entities:[{name:'盐酸二甲双胍片',label:'Drug',linked:!0,neo4j_name:'二甲双胍',score:.94}],rag:{query_rewrite:'盐酸二甲双胍片的用法用量',graph_results:[{content:'二甲双胍：口服，成人0.5g，每日2次，随餐服用',source:'知识图谱',layer:'local_fact',score:1.0}],vector_results:[{content:'二甲双胍 餐中或餐后服用减少胃肠道反应...',source:'医学文献',score:.93}],hallucination_score:.05,verdict:'pass'},tools:[]},r:'识别到药瓶信息：\n\n**药品信息**\n· 盐酸二甲双胍片\n· 规格：0.5g × 30片\n· 生产企业：中美上海施贵宝\n\n**用法用量**\n口服，成人0.5g，每日2次，随餐服用 [知识图谱]\n\n（温馨提示：具体用药请遵医嘱。）',s:['图片识别','知识图谱','医学文献']}};
+device:{u:'把客厅空调关了',debug:{pipeline:[{name:'Perception',color:'var(--n-per)',time:'8ms'},{name:'Supervisor',color:'var(--n-sup)',time:'280ms'},{name:'Device Agent',color:'var(--n-dev)',time:'520ms'},{name:'Output Guard',color:'var(--n-grd)',time:'18ms'}],intents:[{type:'DEVICE_CONTROL',query:'关闭客厅空调',priority:1,color:'var(--n-dev)'}],entities:[],rag:null,tools:[{name:'control_device',args:{device_id:'living_room_ac',action:'off',value:''},risk:'medium',needs_confirmation:!0,confirmation_message:'⚠️ 中风险操作：即将关闭客厅空调，确认执行吗？'}]},response_confirmed:'✅ 客厅空调已关闭',response_cancelled:'好的，已取消操作。',s:[]}};
 
 function runDemo(k){
   go(1);const sc=D[k];if(!sc)return;
@@ -440,6 +522,6 @@ function runDemo(k){
 
 init();
 </script>
-<script src="/static/api-connector.js"></script>
+<script src="/static/api-connector.js?v=6"></script>
 </body>
 </html>

@@ -17,10 +17,21 @@
 
   const API_BASE = window.location.origin;
   const WS_BASE = API_BASE.replace("http", "ws");
-  const USER_ID = "default_user";
+  const USER_ID = (() => {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const fromQuery = q.get("user_id");
+      const fromWindow = window.SILVER_PILOT_USER_ID;
+      const fromStorage = window.localStorage?.getItem("silver_pilot_user_id");
+      return String(fromQuery || fromWindow || fromStorage || "default_user");
+    } catch {
+      return "default_user";
+    }
+  })();
 
   let _ws = null;
   let _wsSessionId = null;
+  let _activeSessionId = null;
   let _connected = false;
   let _pendingDebug = null; // 累积的 debug 数据
 
@@ -44,29 +55,48 @@
 
   async function fetchSessions() {
     if (!_connected) return null;
-    try { return await (await fetch(`${API_BASE}/api/sessions?user_id=${USER_ID}`)).json(); }
+    try {
+      const resp = await fetch(`${API_BASE}/api/sessions?user_id=${USER_ID}`);
+      if (!resp.ok) return null;
+      return await resp.json();
+    }
     catch { return null; }
   }
 
   async function createSession(name) {
     if (!_connected) return null;
     try {
-      return await (await fetch(`${API_BASE}/api/sessions`, {
+      const resp = await fetch(`${API_BASE}/api/sessions`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name || "新对话", user_id: USER_ID }),
-      })).json();
+      });
+      if (!resp.ok) return null;
+      return await resp.json();
     } catch { return null; }
   }
 
   async function deleteSession(id) {
     if (!_connected) return false;
-    try { await fetch(`${API_BASE}/api/sessions/${id}`, { method: "DELETE" }); return true; }
+    try {
+      const sid = String(id);
+      const resp = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(sid)}`, {
+        method: "DELETE",
+      });
+      if (!resp.ok) return false;
+      const data = await resp.json().catch(() => null);
+      return !!(data && data.deleted === true);
+    }
     catch { return false; }
   }
 
   async function fetchMessages(id) {
     if (!_connected) return null;
-    try { return await (await fetch(`${API_BASE}/api/sessions/${id}/messages`)).json(); }
+    try {
+      const sid = String(id);
+      const resp = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(sid)}/messages`);
+      if (!resp.ok) return null;
+      return await resp.json();
+    }
     catch { return null; }
   }
 
@@ -91,16 +121,65 @@
   // ═══════════════════════════════════════
 
   function connectChat(sessionId) {
-    if (_ws && _ws.readyState === WebSocket.OPEN && _wsSessionId === sessionId) return _ws;
+    const sid = String(sessionId);
+    if (
+      _ws &&
+      _wsSessionId === sid &&
+      (_ws.readyState === WebSocket.OPEN || _ws.readyState === WebSocket.CONNECTING)
+    ) {
+      return _ws;
+    }
     if (_ws) { _ws.close(); _ws = null; }
 
-    _wsSessionId = sessionId;
-    _ws = new WebSocket(`${WS_BASE}/ws/chat/${sessionId}`);
-    _ws.onopen = () => console.log(`[WS] Connected: ${sessionId}`);
-    _ws.onmessage = (e) => { try { _handleWS(JSON.parse(e.data)); } catch (err) { console.error("[WS] Parse:", err); } };
-    _ws.onclose = () => { console.log("[WS] Disconnected"); _ws = null; _wsSessionId = null; };
-    _ws.onerror = (e) => console.error("[WS] Error:", e);
-    return _ws;
+    _wsSessionId = sid;
+    const socket = new WebSocket(`${WS_BASE}/ws/chat/${encodeURIComponent(sid)}`);
+    _ws = socket;
+
+    socket.onopen = () => console.log(`[WS] Connected: ${sid}`);
+    socket.onmessage = (e) => {
+      try {
+        _handleWS(JSON.parse(e.data));
+      } catch (err) {
+        console.error("[WS] Parse:", err);
+      }
+    };
+    socket.onclose = () => {
+      console.log("[WS] Disconnected");
+      if (_ws === socket) {
+        _ws = null;
+        _wsSessionId = null;
+      }
+    };
+    socket.onerror = (e) => console.error("[WS] Error:", e);
+    return socket;
+  }
+
+  async function _ensureChatConnected(sessionId, timeoutMs = 1500) {
+    const sid = String(sessionId);
+    const ws = connectChat(sid);
+    if (!ws) return false;
+    if (ws.readyState === WebSocket.OPEN) return true;
+
+    return await new Promise((resolve) => {
+      let done = false;
+      const finish = (ok) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        ws.removeEventListener("open", onOpen);
+        ws.removeEventListener("close", onClose);
+        ws.removeEventListener("error", onError);
+        resolve(ok);
+      };
+      const onOpen = () => finish(true);
+      const onClose = () => finish(false);
+      const onError = () => finish(false);
+      const timer = setTimeout(() => finish(false), timeoutMs);
+
+      ws.addEventListener("open", onOpen);
+      ws.addEventListener("close", onClose);
+      ws.addEventListener("error", onError);
+    });
   }
 
   function sendMessage(content, modality, imagePath, audioPath) {
@@ -233,18 +312,74 @@
   //  Override 前端函数
   // ═══════════════════════════════════════
 
+  function _syncUserBadge() {
+    if (typeof window.setSessUser === "function") {
+      window.setSessUser(USER_ID);
+      return;
+    }
+    const el = document.getElementById("sessUserId");
+    if (el) el.textContent = `user: ${USER_ID}`;
+  }
+
+  async function refreshSessions(options = {}) {
+    if (!_connected) return false;
+    _syncUserBadge();
+
+    const preferCurrent = options.preferCurrent !== false;
+    const preferredId = options.preferredId ? String(options.preferredId) : "";
+
+    let sessions = await fetchSessions();
+    if (!Array.isArray(sessions)) return false;
+
+    // 保证每个用户至少有一个会话，避免空界面
+    if (sessions.length === 0) {
+      const created = await createSession("新对话");
+      sessions = created ? [created] : [];
+    }
+
+    const mapped = sessions.map(s => ({
+      id: String(s.session_id),
+      nm: s.name,
+      dt: _fmtDate(s.updated_at),
+      ms: [],
+      _backend: true,
+    }));
+
+    window.SS = mapped;
+    if (typeof rSess === "function") rSess();
+
+    const currentId = String(window.aS || _activeSessionId || "");
+    const hasCurrent = mapped.some(s => s.id === currentId);
+    const hasPreferred = mapped.some(s => s.id === preferredId);
+
+    let targetId = "";
+    if (hasPreferred) {
+      targetId = preferredId;
+    } else if (preferCurrent && hasCurrent) {
+      targetId = currentId;
+    } else if (mapped.length > 0) {
+      targetId = mapped[0].id;
+    }
+
+    if (targetId && typeof loadS === "function") {
+      await loadS(targetId);
+    } else {
+      window.aS = "";
+      const msgEl = document.getElementById("mCtn");
+      if (msgEl) msgEl.innerHTML = "";
+      const titleEl = document.getElementById("cTitle");
+      if (titleEl) titleEl.textContent = "小银 · Silver Pilot";
+    }
+
+    return true;
+  }
+
   async function initWithBackend() {
+    _syncUserBadge();
     const ok = await checkBackend();
     if (!ok) return;
 
-    const sessions = await fetchSessions();
-    if (sessions && sessions.length > 0 && typeof window.SS !== "undefined") {
-      window.SS = sessions.map(s => ({
-        id: s.session_id, nm: s.name, dt: _fmtDate(s.updated_at), ms: [], _backend: true,
-      }));
-      if (typeof rSess === "function") rSess();
-      if (typeof loadS === "function" && window.SS.length > 0) loadS(window.SS[0].id);
-    }
+    await refreshSessions({ preferCurrent: false });
 
     const reminders = await fetchReminders();
     if (reminders) {
@@ -267,20 +402,31 @@
   // Override: loadS
   const _origLoadS = window.loadS;
   window.loadS = async function (id) {
-    if (!_connected) { if (_origLoadS) _origLoadS(id); return; }
+    const sid = String(id);
+    _activeSessionId = sid;
 
-    const messages = await fetchMessages(id);
+    if (!_connected) { if (_origLoadS) _origLoadS(sid); return; }
+
+    const messages = await fetchMessages(sid);
     if (messages) {
-      const session = (window.SS || []).find(s => s.id === id);
+      const session = (window.SS || []).find(s => String(s.id) === sid);
       if (session) {
-        session.ms = messages.map(m => ({
-          r: m.role === "user" ? "u" : "a", c: m.content,
-          t: _fmtTime(m.timestamp), s: m.sources,
-        }));
+        session.ms = messages.map(m => {
+          let img = false, aud = false, url = "";
+          if (m.metadata) {
+            if (m.metadata.image_path) { img = true; url = m.metadata.image_path; }
+            if (m.metadata.audio_path) aud = true;
+          }
+          return {
+            r: m.role === "user" ? "u" : "a", c: m.content,
+            t: _fmtTime(m.timestamp), s: m.sources,
+            img: img, aud: aud, url: url
+          };
+        });
       }
     }
-    if (_origLoadS) _origLoadS(id);
-    connectChat(id);
+    if (_origLoadS) _origLoadS(sid);
+    connectChat(sid);
   };
 
   // Override: newSess
@@ -288,54 +434,88 @@
   window.newSess = async function () {
     if (!_connected) { if (_origNewSess) _origNewSess(); return; }
     const result = await createSession("新对话");
-    if (result) {
-      window.SS = window.SS || [];
-      window.SS.unshift({
-        id: result.session_id, nm: result.name, dt: "刚刚",
-        ms: [{ r: "a", c: "您好！我是小银，有什么可以帮您的吗？", t: _fmtTime(Date.now() / 1000) }],
-        _backend: true,
-      });
-      if (typeof loadS === "function") loadS(result.session_id);
+    if (result && result.session_id) {
+      const sid = String(result.session_id);
+      await refreshSessions({ preferredId: sid, preferCurrent: false });
       if (typeof tSess === "function") tSess();
     }
   };
 
-  // Override: handleSend（核心：通过 WS 发送消息 + 驱动 Pipeline 动画）
-  const _origHandleSend = window.handleSend;
-  window.handleSend = function () {
-    const field = document.getElementById("iField");
-    const text = field ? field.value.trim() : "";
-    if (!text) return;
+  // Override: delSess（删除会话并刷新列表）
+  const _origDelSess = window.delSess;
+  window.delSess = async function (ev, id) {
+    if (ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
+    }
 
-    if (typeof addMsg === "function") addMsg("user", text);
-    if (field) field.value = "";
-    if (typeof updBtn === "function") updBtn();
+    const sid = String(id || "").trim();
+    if (!sid) return;
 
-    if (_connected && _ws && _ws.readyState === WebSocket.OPEN) {
-      // 初始化 pending debug 数据
-      _pendingDebug = {
-        pipeline: [], intents: [], entities: [], rag: null, tools: [], perception: null,
-      };
-      window.DD = _pendingDebug;
+    const confirmed = typeof window.confirm === "function"
+      ? window.confirm("确认删除该会话吗？")
+      : true;
+    if (!confirmed) return;
 
-      // 打开 drawer 展示实时过程
-      if (!window.drOpen && typeof tDr === "function") tDr();
-      if (typeof dT === "function") dT("pipe");
+    if (!_connected) {
+      if (_origDelSess) _origDelSess(ev, sid, true);
+      return;
+    }
 
-      if (typeof sTyp === "function") sTyp();
+    const current = Array.isArray(window.SS) ? window.SS.map((s) => String(s.id)) : [];
+    const wasActive = String(window.aS || "") === sid;
+    const nextId = wasActive ? (current.find((x) => x !== sid) || "") : String(window.aS || "");
 
-      sendMessage(text, { text: true, audio: false, image: false });
-    } else {
-      // WS 不可用，走 mock
-      if (_origHandleSend) _origHandleSend.call(window);
+    const ok = await deleteSession(sid);
+    if (!ok) {
+      if (typeof addMsg === "function") {
+        addMsg("assistant", "⚠️ 删除会话失败，请刷新后重试。", { noSave: true });
+      }
+      return;
+    }
+
+    await refreshSessions({ preferredId: nextId, preferCurrent: !wasActive });
+  };
+
+  // Override: go（进入对话页时同步对应 user 的会话与消息）
+  const _origGo = window.go;
+  window.go = function (i) {
+    if (_origGo) _origGo(i);
+    if (i === 1 && _connected) {
+      refreshSessions({ preferCurrent: true }).catch((err) => {
+        console.error("[API] refreshSessions failed:", err);
+      });
     }
   };
+
+
 
   // Override: resHTL
   const _origResHTL = window.resHTL;
   window.resHTL = function (id, ok) {
-    if (_origResHTL) _origResHTL(id, ok);
-    if (_connected) sendHITL(!!ok);
+    if (!_connected) {
+      if (_origResHTL) _origResHTL(id, ok);
+      return;
+    }
+
+    const card = document.getElementById(id);
+    if (card) {
+      card.style.borderColor = ok ? "var(--green)" : "var(--text-hint)";
+      const acts = card.querySelector(".hitl-acts");
+      if (acts) {
+        acts.innerHTML = `<span style="font-size:13px;color:${ok ? "var(--green)" : "var(--text-sub)"}">${ok ? "✅ 已确认执行" : "❌ 已取消"}</span>`;
+      }
+    }
+
+    if (window.DD && window.DD.tools && window.DD.tools[0]) {
+      window.DD.tools[0].needs_confirmation = false;
+      window.DD.tools[0].result = { status: ok ? "confirmed" : "cancelled" };
+      if (typeof updDr === "function") updDr();
+    }
+
+    if (!sendHITL(!!ok) && typeof addMsg === "function") {
+      addMsg("assistant", "⚠️ 确认结果发送失败，请重试。", {});
+    }
   };
 
   // ── Utilities ──
@@ -377,7 +557,144 @@
   window.SilverPilotAPI = {
     checkBackend, fetchSessions, createSession, deleteSession,
     fetchMessages, fetchProfile, fetchReminders,
-    connectChat, sendMessage, sendHITL, isConnected: () => _connected,
+    connectChat, sendMessage, sendHITL, refreshSessions,
+    getUserId: () => USER_ID,
+    isConnected: () => _connected,
+
+    uploadFile: async (ev, type) => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      ev.target.value = "";
+
+      if (!_connected) {
+        if (typeof addMsg === "function") addMsg("assistant", "⚠️ 后端未连接，无法上传文件。");
+        return;
+      }
+
+      const sid = String(window.aS || _activeSessionId || _wsSessionId || "default_session");
+      const uid = String(typeof USER_ID !== "undefined" ? USER_ID : "default_user");
+
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("user_id", uid);
+      fd.append("session_id", sid);
+      try {
+        const resp = await fetch("/api/upload", { method: "POST", body: fd });
+        if (!resp.ok) throw new Error("上传请求失败");
+        const data = await resp.json();
+
+        window.PendingUploads[type] = {
+           local_path: data.local_path,
+           url: data.url
+        };
+        window.renderBuffer();
+      } catch (err) {
+        if (typeof addMsg === "function") addMsg("assistant", "⚠️ " + err.message);
+      }
+    },
+    removeUpload: (type) => {
+      window.PendingUploads[type] = null;
+      window.renderBuffer();
+    }
+  };
+
+  // --- OVERRIDES ---
+  window.PendingUploads = { image: null, audio: null };
+  window.renderBuffer = function() {
+      const el = document.getElementById("upBuf");
+      if (!el) return;
+      let html = "";
+      if (PendingUploads.image) {
+        html += `<div class="buf-item">
+          <img src="${window.PendingUploads.image.url}">
+          <div class="buf-text">
+            <span class="buf-title">图片附件</span>
+            <span class="buf-sub">已准备发送</span>
+          </div>
+          <div class="buf-del" onclick="SilverPilotAPI.removeUpload('image')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></div>
+        </div>`;
+      }
+      if (PendingUploads.audio) {
+        html += `<div class="buf-item">
+          <div class="buf-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></div>
+          <div class="buf-text">
+            <span class="buf-title">语音附件</span>
+            <span class="buf-sub">已准备发送</span>
+          </div>
+          <div class="buf-del" onclick="SilverPilotAPI.removeUpload('audio')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></div>
+        </div>`;
+      }
+      el.innerHTML = html;
+      if (html) el.classList.add("has-items");
+      else el.classList.remove("has-items");
+      if (typeof window.updBtn === "function") window.updBtn();
+  };
+
+  const _origHandleSend = window.handleSend;
+  window.handleSend = async function () {
+    const field = document.getElementById("iField");
+    const text = field ? field.value.trim() : "";
+    const hasUploads = window.PendingUploads.image || window.PendingUploads.audio;
+    if (!text && !hasUploads) return;
+
+    if (!_connected) {
+      if (_origHandleSend) _origHandleSend.call(window);
+      return;
+    }
+
+    const sid = String(window.aS || _activeSessionId || _wsSessionId || "");
+    if (!sid) {
+      if (typeof addMsg === "function") addMsg("assistant", "⚠️当前无可用会话，请先创建。");
+      return;
+    }
+
+    const img_path = window.PendingUploads.image ? window.PendingUploads.image.local_path : "";
+    const img_url = window.PendingUploads.image ? window.PendingUploads.image.url : "";
+    const aud_path = window.PendingUploads.audio ? window.PendingUploads.audio.local_path : "";
+
+    let dispText = text || "[发送了文件]";
+    if (typeof addMsg === "function") addMsg("user", dispText, { isImage: !!img_path, isAudio: !!aud_path, imgUrl: img_url });
+    if (typeof window.sTyp === "function") window.sTyp();
+
+    if (field) field.value = "";
+    window.PendingUploads.image = null;
+    window.PendingUploads.audio = null;
+    window.renderBuffer();
+    if (typeof window.updBtn === "function") window.updBtn();
+
+    try {
+        const ready = await _ensureChatConnected(sid);
+        if (!ready) throw new Error("无法连接到会话");
+
+        _pendingDebug = { pipeline: [], intents: [], entities: [], rag: null, tools: [], perception: null };
+        window.DD = _pendingDebug;
+        if (typeof tDr === "function" && typeof dT === "function") dT("pipe");
+
+        const mod = { text: !!text, audio: !!aud_path, image: !!img_path };
+        if (!sendMessage(dispText, mod, img_path, aud_path)) {
+          throw new Error("WS 发送失败");
+        }
+    } catch (err) {
+        if (typeof window.hTyp === "function") window.hTyp();
+        if (typeof addMsg === "function") addMsg("assistant", "⚠️ 发送失败: " + err.message);
+    }
+  };
+
+  const _origClrChat = window.clrChat;
+  window.clrChat = async function () {
+    if (!_connected) {
+       if (_origClrChat) _origClrChat();
+       return;
+    }
+    const sid = String(window.aS || _activeSessionId || "");
+    if (!sid) return;
+
+    try {
+       await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(sid)}/messages`, { method: "DELETE" });
+       await refreshSessions({ preferCurrent: true });
+    } catch (e) {
+       console.error("Clear chat failed", e);
+    }
   };
 
   if (document.readyState === "loading") {

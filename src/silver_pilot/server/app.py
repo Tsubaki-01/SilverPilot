@@ -12,13 +12,15 @@
 import asyncio
 import json
 import os
+import shutil
 import time
 import traceback
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -37,9 +39,14 @@ from .models import (
 )
 
 DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
-STATIC_DIR = Path(__file__).resolve().parent.parent.parent.parent / "static"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+STATIC_DIR = PROJECT_ROOT / "static"
 if not STATIC_DIR.exists():
-    STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+    STATIC_DIR = PROJECT_ROOT / "static"
+
+SERVER_DATA_DIR = PROJECT_ROOT / "server_data"
+UPLOAD_DIR = SERVER_DATA_DIR / "upload"
 
 _graph: CompiledStateGraph | None = None
 _store: Any = None  # RedisStore or SessionStore
@@ -207,7 +214,7 @@ app = FastAPI(title="Silver Pilot API", version="0.2.0", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 
-@app.get("/")
+@app.get("/", response_model=None)
 async def serve_index() -> FileResponse | JSONResponse:
     p = STATIC_DIR / "index.html"
     return (
@@ -219,6 +226,9 @@ async def serve_index() -> FileResponse | JSONResponse:
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/upload", StaticFiles(directory=str(UPLOAD_DIR)), name="upload")
 
 
 # ═══════════════════════════════════════
@@ -238,12 +248,78 @@ async def create_session(req: SessionCreate) -> SessionMeta:
 
 @app.delete("/api/sessions/{session_id}")
 async def delete_session(session_id: str) -> dict[str, bool]:
-    return {"deleted": _store.delete_session(session_id)}
+    meta = _store.get_session(session_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail=f"session_id 不存在: {session_id}")
+
+    user_id = meta.user_id
+    deleted = _store.delete_session(session_id)
+
+    # 自动在后端新建“新对话”
+    remaining = _store.list_sessions(user_id)
+    if not remaining:
+        _store.create_session("新对话", user_id=user_id)
+
+    # 清理关联的上传文件目录
+    target_dir = UPLOAD_DIR / user_id / session_id
+    if target_dir.exists() and target_dir.is_dir():
+        shutil.rmtree(target_dir, ignore_errors=True)
+
+    return {"deleted": True}
+
+
+@app.post("/api/upload")
+async def upload_file(  # type: ignore[no-untyped-def]
+    file: UploadFile = File(...),
+    user_id: str = Form("default_user"),
+    session_id: str = Form("default_session"),
+):
+    ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "bin"
+    filename = f"{uuid.uuid4().hex}.{ext}"
+
+    # Path logic logic for server_data/upload/{user_id}/{session_id}
+    target_dir = UPLOAD_DIR / user_id / session_id
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    path = target_dir / filename
+    with path.open("wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    return {"url": f"/upload/{user_id}/{session_id}/{filename}", "local_path": str(path.absolute())}
 
 
 @app.get("/api/sessions/{session_id}/messages", response_model=list[MessageRecord])
 async def get_messages(session_id: str) -> list[MessageRecord]:
+    if not _store.get_session(session_id):
+        raise HTTPException(status_code=404, detail=f"session_id 不存在: {session_id}")
     return _store.get_messages(session_id)
+
+
+@app.delete("/api/sessions/{session_id}/messages")
+async def clear_messages(session_id: str) -> dict[str, bool]:
+    meta = _store.get_session(session_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail=f"session_id 不存在: {session_id}")
+
+    if hasattr(_store, "_client"):
+        _store._client.delete(f"session:{session_id}:messages")
+        meta.message_count = 0
+        _store._client.set(f"session:{session_id}:meta", meta.model_dump_json())
+    else:
+        if hasattr(_store, "messages") and session_id in getattr(_store, "messages"):
+            _store.messages[session_id].clear()
+        if hasattr(_store, "sessions") and session_id in getattr(_store, "sessions"):
+            _store.sessions[session_id].message_count = 0
+
+    # 清理关联的上传文件目录
+    target_dir = UPLOAD_DIR / meta.user_id / session_id
+    if target_dir.exists() and target_dir.is_dir():
+        shutil.rmtree(target_dir, ignore_errors=True)
+
+    _store.add_message(
+        session_id, MessageRecord(role="assistant", content="对话已清空，开始新对话吧。")
+    )
+    return {"cleared": True}
 
 
 @app.get("/api/profile/{user_id}")
@@ -305,7 +381,13 @@ async def ws_chat(websocket: WebSocket, session_id: str) -> None:
 
 
 async def _handle_chat(ws: WebSocket, sid: str, inc: WSIncoming) -> None:
-    _store.add_message(sid, MessageRecord(role="user", content=inc.content))
+    msg_metadata = {}
+    if inc.image_path:
+        msg_metadata["image_path"] = inc.image_path
+    if inc.audio_path:
+        msg_metadata["audio_path"] = inc.audio_path
+
+    _store.add_message(sid, MessageRecord(role="user", content=inc.content, metadata=msg_metadata))
     if DEMO_MODE or _graph is None:
         await _demo_response(ws, inc)
         return
@@ -321,15 +403,17 @@ async def _agent_response(ws: WebSocket, sid: str, inc: WSIncoming) -> None:
     """处理真实 Agent 调用，逐节点发送 WS 事件。"""
     # 构建多模态消息
     mc: str | list[dict] = inc.content
-    if inc.modality.get("image") and inc.image_path:
-        mc = [
-            {"type": "text", "text": inc.content},
-            {"type": "image_url", "image_url": inc.image_path},
-        ]
-    elif inc.modality.get("audio") and inc.audio_path:
-        mc = [{"type": "audio_url", "audio_url": inc.audio_path}]
+    has_image = inc.modality.get("image") and inc.image_path
+    has_audio = inc.modality.get("audio") and inc.audio_path
+
+    if has_image or has_audio:
+        mc = []
         if inc.content:
-            mc.insert(0, {"type": "text", "text": inc.content})
+            mc.append({"type": "text", "text": inc.content})
+        if has_image:
+            mc.append({"type": "image_url", "image_url": inc.image_path})
+        if has_audio:
+            mc.append({"type": "audio_url", "audio_url": inc.audio_path})
 
     cfg = {"configurable": {"thread_id": sid}}
     inp = {"messages": [HumanMessage(content=mc)]}
