@@ -34,6 +34,17 @@
   let _activeSessionId = null;
   let _connected = false;
   let _pendingDebug = null; // 累积的 debug 数据
+  let _parallelFlow = false;
+
+  function _findLatestPipelineNode(nodeName, preferActive = false) {
+    if (!_pendingDebug || !_pendingDebug.pipeline) return null;
+    for (let i = _pendingDebug.pipeline.length - 1; i >= 0; i -= 1) {
+      const n = _pendingDebug.pipeline[i];
+      if (n.name !== nodeName) continue;
+      if (!preferActive || n.status === "active") return n;
+    }
+    return null;
+  }
 
   // ── 检测后端 ──
   async function checkBackend() {
@@ -231,14 +242,18 @@
   function _onNodeStart(nodeName) {
     if (!_pendingDebug) return;
 
-    // 将该节点标记为 active（前端 rPipe 渲染时会应用动画）
-    const existing = _pendingDebug.pipeline.find(n => n.name === nodeName);
-    if (!existing) {
+    // 尽量匹配最近一个同名 active 节点，避免并行/恢复场景下覆盖历史节点
+    const existingActive = _findLatestPipelineNode(nodeName, true);
+    if (!existingActive) {
       _pendingDebug.pipeline.push({
-        name: nodeName, color: _nodeColor(nodeName), time: "...", status: "active",
+        name: nodeName,
+        color: _nodeColor(nodeName),
+        time: "...",
+        status: "active",
+        parallel: _parallelFlow && /Medical Agent|Device Agent|Chat Agent/.test(nodeName),
       });
     } else {
-      existing.status = "active";
+      existingActive.status = "active";
     }
 
     // 刷新 drawer
@@ -250,14 +265,27 @@
     if (!_pendingDebug) return;
 
     const timeStr = durationMs < 1000 ? `${Math.round(durationMs)}ms` : `${(durationMs / 1000).toFixed(1)}s`;
+    const isParallel = !!(data && data.parallel);
 
-    const existing = _pendingDebug.pipeline.find(n => n.name === nodeName);
-    if (existing) {
-      existing.status = "done";
-      existing.time = timeStr;
+    if (nodeName === "Supervisor") {
+      _parallelFlow = !!(data && data.current_agent === "parallel");
+    }
+    if (nodeName === "Synthesizer" || nodeName === "Output Guard") {
+      _parallelFlow = false;
+    }
+
+    const existingActive = _findLatestPipelineNode(nodeName, true);
+    if (existingActive) {
+      existingActive.status = "done";
+      existingActive.time = timeStr;
+      existingActive.parallel = isParallel || existingActive.parallel;
     } else {
       _pendingDebug.pipeline.push({
-        name: nodeName, color: _nodeColor(nodeName), time: timeStr, status: "done",
+        name: nodeName,
+        color: _nodeColor(nodeName),
+        time: timeStr,
+        status: "done",
+        parallel: isParallel || (_parallelFlow && /Medical Agent|Device Agent|Chat Agent/.test(nodeName)),
       });
     }
 
@@ -291,6 +319,7 @@
     // 合并后端的完整 debug 数据（后端在 response 中发送最终版本）
     if (debug && debug.pipeline) {
       _pendingDebug = debug;
+      _parallelFlow = false;
     }
 
     if (typeof addMsg === "function") {
@@ -306,6 +335,7 @@
     }
 
     _pendingDebug = null;
+    _parallelFlow = false;
   }
 
   // ═══════════════════════════════════════
@@ -667,6 +697,7 @@
         if (!ready) throw new Error("无法连接到会话");
 
         _pendingDebug = { pipeline: [], intents: [], entities: [], rag: null, tools: [], perception: null };
+        _parallelFlow = false;
         window.DD = _pendingDebug;
         if (typeof tDr === "function" && typeof dT === "function") dT("pipe");
 

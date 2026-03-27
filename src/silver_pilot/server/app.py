@@ -464,12 +464,14 @@ async def _agent_response(ws: WebSocket, sid: str, inc: WSIncoming) -> None:
                     "parallel": in_parallel_flow and is_parallel_agent,
                 }
             )
+            node_data = _safe(node_output)
+            node_data["parallel"] = in_parallel_flow and is_parallel_agent
 
             await ws.send_text(
                 WSOutgoing(
                     type="node_end",
                     node=display_name,
-                    data=_safe(node_output),
+                    data=node_data,
                     duration_ms=round(duration_ms, 1),
                 ).model_dump_json()
             )
@@ -688,13 +690,29 @@ async def _hitl(ws: WebSocket, sid: str, cfg: dict, dbg: dict) -> None:
 
     try:
         evts = await asyncio.to_thread(_resume, rv, cfg)
+        in_parallel_flow = any(i.get("parallel") for i in dbg.get("intents", []))
         for n, o, _ in evts:
             display = NODE_DISPLAY_NAMES.get(n, n)
-            await ws.send_text(WSOutgoing(type="node_end", node=display).model_dump_json())
+            is_parallel_agent = n in {
+                "medical_agent",
+                "device_agent",
+                "chat_agent",
+            }
+            node_data = _safe(o)
+            node_data["parallel"] = in_parallel_flow and is_parallel_agent
+            await ws.send_text(
+                WSOutgoing(type="node_end", node=display, data=node_data).model_dump_json()
+            )
             _fill_debug(n, o, dbg)
             color = NODE_COLORS.get(display, "var(--text-sub)")
             dbg["pipeline"].append(
-                {"name": display, "color": color, "time": "...", "status": "done"}
+                {
+                    "name": display,
+                    "color": color,
+                    "time": "...",
+                    "status": "done",
+                    "parallel": in_parallel_flow and is_parallel_agent,
+                }
             )
         fr = await asyncio.to_thread(_final_resp, cfg)
         _store.add_message(sid, MessageRecord(role="assistant", content=fr))
