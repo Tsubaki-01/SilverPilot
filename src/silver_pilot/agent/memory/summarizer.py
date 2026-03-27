@@ -7,7 +7,12 @@
 
 from pathlib import Path
 
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AnyMessage,
+    RemoveMessage,
+    SystemMessage,
+)
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 
 from silver_pilot.config import config
 from silver_pilot.utils import get_channel_logger
@@ -81,8 +86,8 @@ class ConversationSummarizer:
             dict: 包含更新后的 messages 和 conversation_summary 的部分状态
         """
         messages = state["messages"]
-        old_messages = messages[: -self.keep_recent]
-        recent_messages = messages[-self.keep_recent :]
+        old_messages = messages[: -self.keep_recent * 2]
+        recent_messages = messages[-self.keep_recent * 2 :]
 
         logger.info(
             f"开始对话摘要压缩 | 总消息数={len(messages)} | "
@@ -93,10 +98,19 @@ class ConversationSummarizer:
 
         logger.info(f"摘要压缩完成 | 摘要长度={len(summary)} 字符")
 
-        return {
-            "conversation_summary": summary,
-            "messages": [SystemMessage(content=f"[对话历史摘要] {summary}")] + recent_messages,
-        }
+        # 如果摘要生成失败则不删除原始历史，仅更新 conversation_summary
+        if summary.startswith("[自动摘要失败"):
+            logger.warning("摘要生成失败，保留原始消息不做替换")
+            return {"conversation_summary": summary}
+
+        # 使用 langgraph 的 RemoveMessage 语义在合并时先清空历史，再注入摘要和最近消息
+        remove_all = RemoveMessage(REMOVE_ALL_MESSAGES)
+        injected = [
+            remove_all,
+            SystemMessage(content=f"[对话历史摘要] {summary}"),
+        ] + recent_messages
+
+        return {"conversation_summary": summary, "messages": injected}
 
     def _llm_summarize(self, messages: list[AnyMessage]) -> str:
         """
