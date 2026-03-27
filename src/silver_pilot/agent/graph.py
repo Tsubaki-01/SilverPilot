@@ -4,13 +4,14 @@
          支持 Supervisor 循环编排、条件路由、状态持久化（Checkpointer）等核心能力。
 
 图拓扑结构：
-    perception_router → supervisor ⇄ {medical, device, chat, emergency}
+    perception_router → supervisor → {medical, device, chat, emergency}
+                               ↘ (Send 并行) ↙
     supervisor → response_synthesizer → output_guard → memory_writer → END
 
-    Supervisor 通过 conditional_edges 实现动态路由：
-    - 首次进入：LLM 分类意图后路由到对应子 Agent
-    - 子 Agent 完成后回到 Supervisor，检查意图队列
-    - 队列清空后进入 response_synthesizer → output_guard → memory_writer → END
+    Supervisor 通过 conditional_edges + Send 实现动态路由：
+    - 单意图: route_by_intent 返回 str，路由到对应子 Agent
+    - 多意图: route_by_intent 返回 list[Send]，并行分发到多个子 Agent
+    - 子 Agent 完成后直接进入 response_synthesizer 聚合
 """
 
 from pathlib import Path
@@ -88,9 +89,9 @@ def build_agent_graph(checkpointer: object | None = None) -> CompiledStateGraph:
         },
     )
 
-    # ── 子 Agent 全部回到 Supervisor（循环） ──
+    # ── 子 Agent 完成后统一收敛到 Response Synthesizer ──
     for agent_node in ["medical_agent", "device_agent", "chat_agent", "emergency_agent"]:
-        graph.add_edge(agent_node, "supervisor")
+        graph.add_edge(agent_node, "response_synthesizer")
 
     # ── 输出链路 ──
     graph.add_edge("response_synthesizer", "output_guard")
@@ -107,7 +108,7 @@ def build_agent_graph(checkpointer: object | None = None) -> CompiledStateGraph:
     logger.info(
         "Agent 状态图构建完成 | "
         "节点数=9 | "
-        "拓扑: perception → supervisor ⇄ agents → synthesizer → guard → memory → END"
+        "拓扑: perception → supervisor → agents(支持并行) → synthesizer → guard → memory → END"
     )
 
     return compiled

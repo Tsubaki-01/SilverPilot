@@ -13,6 +13,7 @@
 
 from pathlib import Path
 
+from langgraph.types import Send
 from pydantic import BaseModel, Field
 
 from silver_pilot.config import config
@@ -76,12 +77,13 @@ class SupervisorOutput(BaseModel):
 
 def supervisor_node(state: AgentState) -> dict:
     """
-    Supervisor 编排节点：意图分类 + 路由决策。
+    Supervisor 编排节点：一次意图分类 + 一次路由决策。
 
     执行逻辑：
-        1. 如果 pending_intents 非空，说明上一个子 Agent 已完成，取下一个意图
-        2. 如果 pending_intents 为空且是首次进入，调用 LLM 分类意图
-        3. 如果 pending_intents 为空且非首次，说明所有意图已处理完毕
+        1. 首次进入调用 LLM 分类并保存意图列表
+        2. EMERGENCY 短路：仅路由到 emergency
+        3. 单意图：路由到对应单个子 Agent
+        4. 多意图：标记 current_agent="parallel"，由 route_by_intent 返回 Send 并行分发
 
     Args:
         state: 当前 AgentState
@@ -90,7 +92,6 @@ def supervisor_node(state: AgentState) -> dict:
         dict: 包含 pending_intents、current_agent、risk_level、loop_count 的状态更新
     """
     loop_count = state.get("loop_count", 0)
-    pending = state.get("pending_intents", [])
 
     # ── 循环保护 ──
     if loop_count >= MAX_SUPERVISOR_LOOPS:
@@ -99,20 +100,8 @@ def supervisor_node(state: AgentState) -> dict:
             "current_agent": "done",
         }
 
-    # ── 如果有待处理意图，取出下一个 ──
-    if pending:
-        return _dispatch_next(state)
-
-    # ── 首次进入：调用 LLM 分类意图 ──
-    if loop_count == 0:
-        return _classify_and_dispatch(state)
-
-    # ── 所有意图已处理完毕 ──
-    logger.info("所有意图已处理完毕，进入输出阶段")
-    return {
-        "current_agent": "done",
-        "loop_count": loop_count + 1,
-    }
+    # 新架构中 Supervisor 每轮仅执行一次分类和路由
+    return _classify_and_dispatch(state)
 
 
 # ────────────────────────────────────────────────────────────
@@ -120,28 +109,8 @@ def supervisor_node(state: AgentState) -> dict:
 # ────────────────────────────────────────────────────────────
 
 
-def _dispatch_next(state: AgentState) -> dict:
-    """从意图队列中取出下一个并分发，同时将 sub_query 写入 state。"""
-    next_intent, *remaining = state.get("pending_intents", [])
-    agent = INTENT_TO_AGENT.get(next_intent["type"], "chat")
-
-    logger.info(
-        f"分发意图 | type={next_intent['type']} | agent={agent} | "
-        f"sub_query={next_intent.get('sub_query', '')[:30]}... | 剩余={len(remaining)}"
-    )
-
-    return {
-        "pending_intents": remaining,
-        "current_agent": agent,
-        "current_sub_query": next_intent.get("sub_query", ""),
-        "loop_count": state.get("loop_count", 0) + 1,
-        "retry_count": 0,
-        "total_turns": state.get("total_turns", 0) + 1,
-    }
-
-
 def _classify_and_dispatch(state: AgentState) -> dict:
-    """调用 LLM 分类意图，取第一个立即分发，其余入队。"""
+    """调用 LLM 分类意图并生成一次性分发策略。"""
     user_query = extract_latest_query(state)
     if not user_query:
         logger.warning("无法提取用户查询，降级为闲聊")
@@ -170,15 +139,43 @@ def _classify_and_dispatch(state: AgentState) -> dict:
         key=lambda x: x["priority"],
     )
 
-    first, *remaining = sorted_intents
+    # Emergency 短路：仅处理紧急意图
+    emergency_intent = next((i for i in sorted_intents if i.get("type") == "EMERGENCY"), None)
+    if emergency_intent:
+        logger.warning("检测到 EMERGENCY，短路到 emergency_agent")
+        return {
+            "pending_intents": [emergency_intent],
+            "current_agent": "emergency",
+            "current_sub_query": emergency_intent.get("sub_query", user_query),
+            "risk_level": "critical",
+            "loop_count": 1,
+            "retry_count": 0,
+            "total_turns": state.get("total_turns", 0) + 1,
+        }
+
+    if len(sorted_intents) == 1:
+        only = sorted_intents[0]
+        only_agent = INTENT_TO_AGENT.get(only["type"], "chat")
+        logger.info(f"单意图路由 | type={only['type']} | agent={only_agent}")
+        return {
+            "pending_intents": sorted_intents,
+            "current_agent": only_agent,
+            "current_sub_query": only.get("sub_query", ""),
+            "risk_level": parsed.risk_level,
+            "loop_count": 1,
+            "retry_count": 0,
+            "total_turns": state.get("total_turns", 0) + 1,
+        }
+
+    logger.info(f"多意图并行路由 | count={len(sorted_intents)}")
     logger.info(
         f"意图分类完成 | types={[i['type'] for i in sorted_intents]} | risk={parsed.risk_level}"
     )
 
     return {
-        "pending_intents": remaining,
-        "current_agent": INTENT_TO_AGENT.get(first["type"], "chat"),
-        "current_sub_query": first.get("sub_query", ""),
+        "pending_intents": sorted_intents,
+        "current_agent": "parallel",
+        "current_sub_query": "",
         "risk_level": parsed.risk_level,
         "loop_count": 1,
         "retry_count": 0,
@@ -191,7 +188,7 @@ def _classify_and_dispatch(state: AgentState) -> dict:
 # ────────────────────────────────────────────────────────────
 
 
-def route_by_intent(state: AgentState) -> str:
+def route_by_intent(state: AgentState) -> str | list[Send]:
     """
     条件路由函数：根据 current_agent 决定下一个执行节点。
 
@@ -199,8 +196,42 @@ def route_by_intent(state: AgentState) -> str:
         state: 当前 AgentState
 
     Returns:
-        str: 目标节点名称
+        str | list[Send]: 单意图返回节点名；多意图返回 Send 列表并行分发
     """
     agent = state.get("current_agent", "done")
+    if agent == "parallel":
+        # 同类型意图合并为一次分发，避免并行写冲突。
+        grouped_queries: dict[str, list[str]] = {
+            "medical": [],
+            "device": [],
+            "chat": [],
+        }
+        for intent in state.get("pending_intents", []):
+            agent_key = INTENT_TO_AGENT.get(intent.get("type", "CHITCHAT"), "chat")
+            if agent_key == "emergency":
+                # emergency 已在 supervisor_node 中短路处理，这里忽略
+                continue
+            grouped_queries.setdefault(agent_key, [])
+            grouped_queries[agent_key].append(intent.get("sub_query", ""))
+
+        sends: list[Send] = []
+        active_branches: list[str] = []
+        for agent_key, queries in grouped_queries.items():
+            if not queries:
+                continue
+            merged_query = "；".join(q for q in queries if q)
+            active_branches.append(agent_key)
+            sends.append(
+                Send(
+                    f"{agent_key}_agent",
+                    {
+                        "current_sub_query": merged_query,
+                    },
+                )
+            )
+
+        logger.info(f"并行分发 | branches={active_branches}")
+        return sends if sends else "chat"
+
     logger.debug(f"路由决策 | current_agent={agent}")
     return agent

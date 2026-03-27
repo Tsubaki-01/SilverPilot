@@ -12,6 +12,12 @@ from langgraph.graph.message import add_messages
 
 from silver_pilot.config import config
 
+
+def merge_lists(left: list, right: list) -> list:
+    """Reducer for parallel branches: append new list items to existing ones."""
+    return [*left, *right]
+
+
 # ────────────────────────────────────────────────────────────
 # 常量定义
 # ────────────────────────────────────────────────────────────
@@ -127,7 +133,7 @@ class AgentState(TypedDict):
     rag_context: str
     """RAGPipeline 返回的检索上下文。"""
 
-    linked_entities: list[dict]
+    linked_entities: Annotated[list[dict], merge_lists]
     """实体链接阶段的结果列表。"""
 
     # ── 记忆层 ──
@@ -138,21 +144,21 @@ class AgentState(TypedDict):
     hallucination_score: float
     """幻觉检测分数（0.0 ~ 1.0），越高越可能是幻觉。"""
 
-    safety_flags: list[str]
+    safety_flags: Annotated[list[str], merge_lists]
     """触发的安全规则列表，如 ["political_sensitive", "medical_disclaimer"]。"""
 
     # ── 执行层 ──
-    tool_calls: list[dict]
+    tool_calls: Annotated[list[dict], merge_lists]
     """待执行的工具调用列表，每项包含 tool_name 和 arguments。"""
 
-    tool_results: list[dict]
+    tool_results: Annotated[list[dict], merge_lists]
     """工具执行结果列表。"""
 
     retry_count: int
     """当前子 Agent 的重试次数。"""
 
     # ── 输出 ──
-    sub_response: list[str]
+    sub_response: Annotated[list[str], merge_lists]
     """一轮对话中子 Agent 的响应输出列表。"""
 
     final_response: str
