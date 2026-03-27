@@ -219,6 +219,8 @@ input,textarea{font-family:inherit}
 .pipe-node.pending{opacity:.3}
 .pipe-dot{width:6px;height:6px;border-radius:50%}
 .pipe-arr{color:var(--text-hint);font-size:12px}
+.pipe-parallel-group{display:flex;flex-direction:column;gap:4px;padding:6px 8px;border:1.5px dashed var(--accent-lt);border-radius:10px;background:var(--accent-bg);position:relative}
+.pipe-parallel-label{position:absolute;top:-8px;left:8px;font-size:9px;font-weight:700;color:var(--accent);background:var(--bg-drawer);padding:0 4px}
 .intent-item{display:flex;align-items:center;gap:7px;padding:9px 11px;background:var(--bg-card);border-radius:var(--r-md);border-left:3px solid;margin-bottom:5px;box-shadow:var(--shadow-sm)}
 .intent-type{font-size:10px;font-weight:600;padding:3px 7px;border-radius:5px;font-family:'JetBrains Mono',monospace}
 .intent-q{font-size:12px;flex:1}
@@ -498,8 +500,39 @@ function tDr(){drOpen=!drOpen;document.getElementById('dr').classList.toggle('op
 function dT(t){curDT=t;document.querySelectorAll('.drawer-tab').forEach(x=>x.classList.toggle('active',x.dataset.t===t));updDr()}
 function updDr(){const el=document.getElementById('dBody');if(!DD){el.innerHTML='<div style="text-align:center;color:var(--text-hint);font-size:13px;padding:40px 0">发送消息后展示 Agent 内部过程</div>';return}({pipe:rPipe,intents:rInt,rag:rRag,tools:rTool,ents:rEnt})[curDT]?.();document.getElementById('drTog').classList.toggle('has',!!DD)}
 
-function rPipe(){const el=document.getElementById('dBody');if(!DD)return;const ns=DD.pipeline;let h='<div class="pipe-flow">';ns.forEach((n,i)=>{h+=`<div class="pipe-node ${n.status||'done'}" style="background:${n.color}12;border-color:${n.status==='active'?n.color:'transparent'}"><span class="pipe-dot" style="background:${n.color}"></span><span style="color:${n.color}">${n.name}</span>${n.status==='done'?`<span class="mono" style="color:var(--text-hint);font-size:9px">${n.time}</span>`:''}</div>`;if(i<ns.length-1)h+='<span class="pipe-arr">→</span>'});h+='</div>';const dn=ns.filter(n=>n.status==='done'),tot=dn.reduce((s,n)=>s+parseFloat(n.time),0);h+=`<div class="mono" style="font-size:10px;color:var(--text-hint)">Nodes:${dn.length}/${ns.length} Total:${tot<100?tot.toFixed(0)+'ms':(tot/1000).toFixed(2)+'s'}</div>`;if(DD.perception)h+=`<div style="margin-top:10px"><div class="rag-title">Perception Output</div><div class="rag-chunk" style="border-color:var(--n-per)">${esc(DD.perception.image_context)}</div></div>`;el.innerHTML=h}
-function rInt(){const el=document.getElementById('dBody');if(!DD?.intents?.length){el.innerHTML='<div style="color:var(--text-hint);font-size:13px;padding:20px 0">无意图数据</div>';return}let h=`<div class="mono" style="font-size:10px;color:var(--text-hint);margin-bottom:8px">Supervisor 识别 ${DD.intents.length} 个意图</div>`;DD.intents.forEach(i=>{h+=`<div class="intent-item" style="border-color:${i.color}"><span class="intent-type" style="background:${i.color}15;color:${i.color}">${i.type}</span><span class="intent-q">${i.query}</span><span class="intent-p">P${i.priority}</span></div>`});el.innerHTML=h}
+function rPipe(){
+  const el=document.getElementById('dBody');
+  if(!DD)return;
+  const ns=DD.pipeline||[];
+  let h='<div class="pipe-flow">';
+  let i=0;
+  while(i<ns.length){
+    const n=ns[i];
+    if(n.parallel){
+      let j=i;
+      const g=[];
+      while(j<ns.length&&ns[j].parallel){g.push(ns[j]);j++}
+      h+='<div class="pipe-parallel-group"><span class="pipe-parallel-label">PARALLEL</span>';
+      g.forEach((pn,k)=>{
+        h+=`<div class="pipe-node ${pn.status||'done'}" style="background:${pn.color}12;border-color:${pn.status==='active'?pn.color:'transparent'}"><span class="pipe-dot" style="background:${pn.color}"></span><span style="color:${pn.color}">${pn.name}</span>${pn.status==='done'?`<span class="mono" style="color:var(--text-hint);font-size:9px">${pn.time}</span>`:''}</div>`;
+        if(k<g.length-1)h+='<span class="pipe-arr">│</span>';
+      });
+      h+='</div>';
+      i=j;
+    }else{
+      h+=`<div class="pipe-node ${n.status||'done'}" style="background:${n.color}12;border-color:${n.status==='active'?n.color:'transparent'}"><span class="pipe-dot" style="background:${n.color}"></span><span style="color:${n.color}">${n.name}</span>${n.status==='done'?`<span class="mono" style="color:var(--text-hint);font-size:9px">${n.time}</span>`:''}</div>`;
+      i++;
+    }
+    if(i<ns.length)h+='<span class="pipe-arr">→</span>';
+  }
+  h+='</div>';
+  const dn=ns.filter(n=>n.status==='done');
+  const tot=dn.reduce((s,n)=>s+parseFloat(n.time),0);
+  h+=`<div class="mono" style="font-size:10px;color:var(--text-hint)">Nodes:${dn.length}/${ns.length} Total:${tot<100?tot.toFixed(0)+'ms':(tot/1000).toFixed(2)+'s'}</div>`;
+  if(DD.perception)h+=`<div style="margin-top:10px"><div class="rag-title">Perception Output</div><div class="rag-chunk" style="border-color:var(--n-per)">${esc(DD.perception.image_context)}</div></div>`;
+  el.innerHTML=h;
+}
+function rInt(){const el=document.getElementById('dBody');if(!DD?.intents?.length){el.innerHTML='<div style="color:var(--text-hint);font-size:13px;padding:20px 0">无意图数据</div>';return}let h=`<div class="mono" style="font-size:10px;color:var(--text-hint);margin-bottom:8px">Supervisor 识别 ${DD.intents.length} 个意图</div>`;DD.intents.forEach(i=>{h+=`<div class="intent-item" style="border-color:${i.color}"><span class="intent-type" style="background:${i.color}15;color:${i.color}">${i.type}</span><span class="intent-q">${i.query}</span><span class="intent-p">P${i.priority}</span>${i.parallel?'<span class="intent-p" style="color:var(--accent)">⚡并行</span>':''}</div>`});el.innerHTML=h}
 function rRag(){const el=document.getElementById('dBody'),r=DD?.rag;if(!r){el.innerHTML='<div style="color:var(--text-hint);font-size:13px;padding:20px 0">未触发 RAG 检索</div>';return}let h=`<div class="rag-title">Query Rewrite</div><div style="font-size:12px;padding:6px 9px;background:var(--accent-bg);border-radius:7px;color:var(--accent);margin-bottom:6px">"${r.query_rewrite}"</div>`;if(r.graph_results?.length){h+='<div class="rag-title">GraphRAG</div>';r.graph_results.forEach(c=>{const cl=c.layer==='reasoning_path'?'var(--n-sup)':'var(--n-med)';h+=`<div class="rag-chunk" style="border-color:${cl}">${esc(c.content)}<div class="rag-chunk-m"><span>${c.source}</span><span>${c.layer}</span><span>score:${c.score}</span></div></div>`})}if(r.vector_results?.length){h+='<div class="rag-title">Vector Search</div>';r.vector_results.forEach(c=>{h+=`<div class="rag-chunk" style="border-color:var(--blue)">${esc(c.content)}<div class="rag-chunk-m"><span>${c.source}</span><span>score:${c.score}</span></div></div>`})}h+=`<div class="rag-title">Faithfulness Check</div><div class="hal-meter"><span style="font-size:11px;color:var(--text-sub);width:55px">幻觉分数</span><div class="hal-bar"><div class="hal-fill" style="width:${r.hallucination_score*100}%;background:${r.hallucination_score<.3?'var(--green)':'var(--yellow)'}"></div></div><span class="hal-sc" style="color:${r.hallucination_score<.3?'var(--green)':'var(--yellow)'}">${r.hallucination_score.toFixed(2)}</span><span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${r.verdict==='pass'?'var(--green-bg)':'var(--red-bg)'};color:${r.verdict==='pass'?'var(--green)':'var(--red)'};font-weight:600">${r.verdict.toUpperCase()}</span></div>`;el.innerHTML=h}
 function rTool(){const el=document.getElementById('dBody'),ts=DD?.tools;if(!ts?.length){el.innerHTML='<div style="color:var(--text-hint);font-size:13px;padding:20px 0">未触发工具调用</div>';return}el.innerHTML=ts.map(t=>`<div class="tool-card"><div class="tool-nm">${t.name}<span class="tool-risk ${t.risk}">${t.risk.toUpperCase()}</span></div><div class="tool-args">${JSON.stringify(t.args,null,2)}</div>${t.needs_confirmation?'<div style="margin-top:5px;font-size:10px;color:var(--yellow)">⏳ HITL interrupt</div>':t.result?`<div style="margin-top:5px;font-size:10px;color:var(--green);font-family:JetBrains Mono,monospace">✓ ${JSON.stringify(t.result)}</div>`:''}</div>`).join('')}
 function rEnt(){const el=document.getElementById('dBody'),es=DD?.entities;if(!es?.length){el.innerHTML='<div style="color:var(--text-hint);font-size:13px;padding:20px 0">未提取到实体</div>';return}let h='<div class="rag-title">Entity Linking</div><div class="ent-chips">';es.forEach(e=>{h+=`<div class="ent-chip ${e.linked?'linked':'unlinked'}"><span style="width:5px;height:5px;border-radius:50%;background:${e.linked?'var(--green)':'var(--red)'}"></span>${e.name}<span style="font-size:9px;opacity:.7">${e.label}</span></div>`});h+='</div>';es.forEach(e=>{h+=`<div class="ent-det"><span style="color:var(--text-sub)">"${e.name}"</span><span style="color:var(--text-hint)"> → </span><span style="color:${e.linked?'var(--green)':'var(--red)'}">${e.linked?e.neo4j_name:'NOT_LINKED'}</span><span style="color:var(--text-hint)"> score:${e.score}</span></div>`});el.innerHTML=h}

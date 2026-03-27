@@ -449,12 +449,19 @@ async def _agent_response(ws: WebSocket, sid: str, inc: WSIncoming) -> None:
             time_str = (
                 f"{duration_ms:.0f}ms" if duration_ms < 1000 else f"{duration_ms / 1000:.1f}s"
             )
+            in_parallel_flow = any(i.get("parallel") for i in dbg.get("intents", []))
+            is_parallel_agent = node_name in {
+                "medical_agent",
+                "device_agent",
+                "chat_agent",
+            }
             dbg["pipeline"].append(
                 {
                     "name": display_name,
                     "color": color,
                     "time": time_str,
                     "status": "done",
+                    "parallel": in_parallel_flow and is_parallel_agent,
                 }
             )
 
@@ -580,8 +587,19 @@ def _fill_debug(name: str, out: dict, dbg: dict) -> None:
         elif name == "supervisor":
             ca = out.get("current_agent", "")
             sq = out.get("current_sub_query", "")
-            rl = out.get("risk_level", "low")
-            if ca and ca != "done":
+            if ca == "parallel":
+                for i in out.get("pending_intents", []):
+                    itype = i.get("type", "CHITCHAT")
+                    dbg["intents"].append(
+                        {
+                            "type": itype,
+                            "query": i.get("sub_query", ""),
+                            "priority": i.get("priority", 9),
+                            "color": INTENT_COLORS.get(itype, "var(--text-sub)"),
+                            "parallel": True,
+                        }
+                    )
+            elif ca and ca != "done":
                 intent_type = INTENT_MAP.get(ca, "CHITCHAT")
                 dbg["intents"].insert(
                     0,
@@ -592,16 +610,16 @@ def _fill_debug(name: str, out: dict, dbg: dict) -> None:
                         "color": INTENT_COLORS.get(intent_type, "var(--text-sub)"),
                     },
                 )
-            for i in out.get("pending_intents", []):
-                itype = i.get("type", "CHITCHAT")
-                dbg["intents"].append(
-                    {
-                        "type": itype,
-                        "query": i.get("sub_query", ""),
-                        "priority": i.get("priority", 9),
-                        "color": INTENT_COLORS.get(itype, "var(--text-sub)"),
-                    }
-                )
+                for i in out.get("pending_intents", []):
+                    itype = i.get("type", "CHITCHAT")
+                    dbg["intents"].append(
+                        {
+                            "type": itype,
+                            "query": i.get("sub_query", ""),
+                            "priority": i.get("priority", 9),
+                            "color": INTENT_COLORS.get(itype, "var(--text-sub)"),
+                        }
+                    )
 
         elif name == "medical_agent":
             if out.get("rag_context"):
