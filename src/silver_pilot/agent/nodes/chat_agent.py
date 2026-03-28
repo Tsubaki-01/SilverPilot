@@ -94,5 +94,5 @@ def chat_agent_node(state: AgentState) -> dict:
 
     return {
         "messages": [AIMessage(content=answer)],
-        "sub_response": state.get("sub_response", []) + [answer],
+        "sub_response": [answer],
     }

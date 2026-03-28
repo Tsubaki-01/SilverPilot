@@ -36,6 +36,7 @@
   let _pendingDebug = null; // 累积的 debug 数据
   let _parallelFlow = false;
   let _pipelineInsertCounter = 0;
+  let _hitlPending = false;
   const _orderingUtil = (window.PipelineOrdering && typeof window.PipelineOrdering.normalizePipelineOrder === "function")
     ? window.PipelineOrdering
     : {
@@ -78,6 +79,36 @@
   function _normalizePipelineOrder() {
     if (!_pendingDebug || !Array.isArray(_pendingDebug.pipeline)) return;
     _orderingUtil.normalizePipelineOrder(_pendingDebug.pipeline);
+  }
+
+  function _setInputLock(locked) {
+    _hitlPending = !!locked;
+
+    const field = document.getElementById("iField");
+    const sendBtn = document.getElementById("sBtn");
+
+    if (field) {
+      if (_hitlPending) {
+        if (!field.dataset.prevPlaceholder) {
+          field.dataset.prevPlaceholder = field.placeholder || "";
+        }
+        field.placeholder = "等待确认中，请先完成弹窗操作...";
+      } else if (field.dataset.prevPlaceholder) {
+        field.placeholder = field.dataset.prevPlaceholder;
+      }
+      field.disabled = _hitlPending;
+    }
+
+    if (sendBtn) {
+      sendBtn.disabled = _hitlPending;
+      sendBtn.style.opacity = _hitlPending ? "0.55" : "";
+      sendBtn.style.cursor = _hitlPending ? "not-allowed" : "";
+      sendBtn.title = _hitlPending ? "等待 HITL 确认中" : "";
+    }
+
+    if (!_hitlPending && typeof window.updBtn === "function") {
+      window.updBtn();
+    }
   }
 
   // ── 检测后端 ──
@@ -190,6 +221,7 @@
     };
     socket.onclose = () => {
       console.log("[WS] Disconnected");
+      _setInputLock(false);
       if (_ws === socket) {
         _ws = null;
         _wsSessionId = null;
@@ -227,11 +259,11 @@
     });
   }
 
-  function sendMessage(content, modality, imagePath, audioPath) {
+  function sendMessage(content, modality, imagePath, audioPath, imageUrl) {
     if (!_ws || _ws.readyState !== WebSocket.OPEN) return false;
     _ws.send(JSON.stringify({
       type: "message", content, modality: modality || { text: true, audio: false, image: false },
-      image_path: imagePath || "", audio_path: audioPath || "",
+      image_path: imagePath || "", audio_path: audioPath || "", image_url: imageUrl || "",
     }));
     return true;
   }
@@ -260,10 +292,12 @@
         break;
 
       case "response":
+        _setInputLock(false);
         _onFinalResponse(msg.content, msg.debug || {});
         break;
 
       case "error":
+        _setInputLock(false);
         console.error("[Agent Error]", msg.message);
         if (typeof hTyp === "function") hTyp();
         if (typeof addMsg === "function") addMsg("assistant", `⚠️ ${msg.message}`);
@@ -350,11 +384,22 @@
   }
 
   function _onHITLRequest(data) {
+    _setInputLock(true);
     if (typeof hTyp === "function") hTyp();
+
+    // 兼容后端 interrupt 原始字段：risk_level / message / tool_name
+    const normalized = {
+      name: data?.name || data?.tool_name || "unknown_tool",
+      args: (data && typeof data.args === "object" && data.args) ? data.args : {},
+      risk: data?.risk || data?.risk_level || "medium",
+      confirmation_message:
+        data?.confirmation_message || data?.message || "检测到风险操作，是否继续执行？",
+    };
+
     // 构造 HITL 卡片
     if (typeof showHTL === "function") {
       showHTL({
-        debug: { tools: [data] },
+        debug: { tools: [normalized] },
         response_confirmed: "✅ 操作已执行",
         response_cancelled: "好的，已取消。",
       });
@@ -495,7 +540,13 @@
         session.ms = messages.map(m => {
           let img = false, aud = false, url = "";
           if (m.metadata) {
-            if (m.metadata.image_path) { img = true; url = m.metadata.image_path; }
+            if (m.metadata.image_url) {
+              img = true;
+              url = m.metadata.image_url;
+            } else if (m.metadata.image_path) {
+              img = true;
+              url = _toPublicUploadUrl(m.metadata.image_path, sid);
+            }
             if (m.metadata.audio_path) aud = true;
           }
           return {
@@ -594,8 +645,11 @@
       if (typeof updDr === "function") updDr();
     }
 
-    if (!sendHITL(!!ok) && typeof addMsg === "function") {
-      addMsg("assistant", "⚠️ 确认结果发送失败，请重试。", {});
+    if (!sendHITL(!!ok)) {
+      _setInputLock(false);
+      if (typeof addMsg === "function") {
+        addMsg("assistant", "⚠️ 确认结果发送失败，请重试。", {});
+      }
     }
   };
 
@@ -622,6 +676,21 @@
       (debug.rag.vector_results || []).forEach(r => s.add(r.source));
     }
     return [...s];
+  }
+
+  function _toPublicUploadUrl(pathOrUrl, sessionId) {
+    const raw = String(pathOrUrl || "").trim();
+    if (!raw) return "";
+    if (raw.startsWith("/upload/")) return raw;
+    if (/^https?:\/\//i.test(raw)) return raw;
+
+    const parts = raw.split(/[\\/]/).filter(Boolean);
+    const filename = parts.length ? parts[parts.length - 1] : "";
+    if (!filename || !filename.includes(".")) return "";
+
+    const uid = encodeURIComponent(USER_ID);
+    const sid = encodeURIComponent(String(sessionId || _activeSessionId || "default_session"));
+    return `/upload/${uid}/${sid}/${encodeURIComponent(filename)}`;
   }
 
   function _nodeColor(name) {
@@ -713,6 +782,13 @@
 
   const _origHandleSend = window.handleSend;
   window.handleSend = async function () {
+    if (_hitlPending) {
+      if (typeof addMsg === "function") {
+        addMsg("assistant", "⚠️ 当前有待确认操作，请先点击弹窗中的“确认执行”或“取消”。", { noSave: true });
+      }
+      return;
+    }
+
     const field = document.getElementById("iField");
     const text = field ? field.value.trim() : "";
     const hasUploads = window.PendingUploads.image || window.PendingUploads.audio;
@@ -754,7 +830,7 @@
         if (typeof tDr === "function" && typeof dT === "function") dT("pipe");
 
         const mod = { text: !!text, audio: !!aud_path, image: !!img_path };
-        if (!sendMessage(dispText, mod, img_path, aud_path)) {
+        if (!sendMessage(dispText, mod, img_path, aud_path, img_url)) {
           throw new Error("WS 发送失败");
         }
     } catch (err) {

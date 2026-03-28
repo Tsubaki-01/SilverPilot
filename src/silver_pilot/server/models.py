@@ -56,6 +56,7 @@ class WSIncoming(BaseModel):
         default_factory=lambda: {"text": True, "audio": False, "image": False}
     )
     image_path: str = ""
+    image_url: str = ""
     audio_path: str = ""
     confirmed: bool | None = None  # HITL 确认
 
