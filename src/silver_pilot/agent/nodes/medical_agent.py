@@ -106,9 +106,10 @@ def medical_agent_node(state: AgentState) -> dict:
         return {
             "messages": [AIMessage(content=FALLBACK_RESPONSE)],
             "rag_context": "",
+            "rag_query_rewrite": user_query,
             "linked_entities": [],
             "hallucination_score": 0.0,
-            "sub_response": state.get("sub_response", []) + [FALLBACK_RESPONSE],
+            "sub_response": [FALLBACK_RESPONSE],
         }
 
     rewritten_query = (
@@ -133,9 +134,10 @@ def medical_agent_node(state: AgentState) -> dict:
         return {
             "messages": [AIMessage(content=FALLBACK_RESPONSE)],
             "rag_context": rag_context,
+            "rag_query_rewrite": rewritten_query,
             "linked_entities": linked_entities,
             "hallucination_score": hallucination_score,
-            "sub_response": state.get("sub_response", []) + [FALLBACK_RESPONSE],
+            "sub_response": [FALLBACK_RESPONSE],
         }
 
     # ── 通过：返回生成的回答 ──
@@ -147,9 +149,10 @@ def medical_agent_node(state: AgentState) -> dict:
     return {
         "messages": [AIMessage(content=generated_answer)],
         "rag_context": rag_context,
+        "rag_query_rewrite": rewritten_query,
         "linked_entities": linked_entities,
         "hallucination_score": hallucination_score,
-        "sub_response": state.get("sub_response", []) + [generated_answer],
+        "sub_response": [generated_answer],
     }
 
 

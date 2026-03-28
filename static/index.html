@@ -213,22 +213,30 @@ input,textarea{font-family:inherit}
 .drawer-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
 
 /* Drawer content styles */
-.pipe-flow{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:12px}
-.pipe-node{display:flex;align-items:center;gap:4px;padding:5px 9px;border-radius:7px;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace;border:1px solid transparent;transition:all .3s}
+.pipe-flow{display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-bottom:12px}
+.pipe-node{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace;border:1px solid transparent;transition:all .25s;width:100%}
 .pipe-node.active{animation:nodeAct 1.2s ease infinite}
 .pipe-node.pending{opacity:.3}
 .pipe-dot{width:6px;height:6px;border-radius:50%}
-.pipe-arr{color:var(--text-hint);font-size:12px}
-.pipe-seg{display:flex;flex-direction:column;gap:4px;padding:8px;border-radius:10px;border:1px solid var(--border-lt);background:var(--bg-card)}
-.pipe-seg-tag{display:inline-flex;align-items:center;gap:4px;width:max-content;font-size:9px;font-weight:700;padding:2px 6px;border-radius:999px;font-family:'JetBrains Mono',monospace}
+.pipe-node-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pipe-node-time{color:var(--text-hint);font-size:9px}
+.pipe-seg{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:12px;border:1px solid var(--border-lt);background:linear-gradient(180deg,var(--bg-card),#fff);box-shadow:var(--shadow-sm);width:100%}
+.pipe-seg-tag{display:inline-flex;align-items:center;gap:4px;width:max-content;font-size:9px;font-weight:700;padding:3px 7px;border-radius:999px;font-family:'JetBrains Mono',monospace}
 .pipe-seg-tag.serial{background:var(--blue-bg);color:var(--blue)}
 .pipe-seg-tag.parallel{background:var(--accent-bg);color:var(--accent)}
 .pipe-seg-tag.post{background:var(--green-bg);color:var(--green)}
 .pipe-seg-tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:50%;font-size:9px;line-height:1;background:rgba(0,0,0,.08);color:inherit;cursor:help}
 .pipe-seg-tip::after{content:attr(data-tip);position:absolute;left:50%;top:16px;transform:translateX(-50%);white-space:nowrap;background:var(--bg-card);color:var(--text-sub);border:1px solid var(--border);border-radius:6px;padding:4px 6px;font-size:10px;font-weight:500;box-shadow:var(--shadow-sm);opacity:0;pointer-events:none;z-index:5;transition:opacity .15s}
 .pipe-seg-tip:hover::after{opacity:1}
-.pipe-parallel-group{display:flex;flex-direction:column;gap:4px;padding:6px 8px;border:1.5px dashed var(--accent-lt);border-radius:10px;background:var(--accent-bg);position:relative}
+.pipe-seg-divider{display:block;width:1px;height:12px;background:linear-gradient(180deg,var(--border-lt),var(--border));margin:0 auto}
+.pipe-lane{position:relative;display:flex;flex-direction:column;gap:6px;padding-left:18px}
+.pipe-lane::before{content:'';position:absolute;left:7px;top:0;bottom:0;width:1px;background:var(--border-lt)}
+.pipe-lane-row{position:relative}
+.pipe-lane-row::before{content:'';position:absolute;left:-11px;top:13px;width:8px;height:8px;border-radius:50%;background:var(--border)}
+.pipe-lane-row.parallel::before{background:var(--accent)}
+.pipe-parallel-group{display:flex;flex-direction:column;gap:6px;padding:8px 8px 6px;border:1.5px dashed var(--accent-lt);border-radius:10px;background:var(--accent-bg);position:relative}
 .pipe-parallel-label{position:absolute;top:-8px;left:8px;font-size:9px;font-weight:700;color:var(--accent);background:var(--bg-drawer);padding:0 4px}
+.pipe-parallel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:6px}
 .intent-item{display:flex;align-items:center;gap:7px;padding:9px 11px;background:var(--bg-card);border-radius:var(--r-md);border-left:3px solid;margin-bottom:5px;box-shadow:var(--shadow-sm)}
 .intent-type{font-size:10px;font-weight:600;padding:3px 7px;border-radius:5px;font-family:'JetBrains Mono',monospace}
 .intent-q{font-size:12px;flex:1}
@@ -491,7 +499,14 @@ function resHTL(id,ok){
   card.style.borderColor=ok?'var(--green)':'var(--text-hint)';
   card.querySelector('.hitl-acts').innerHTML=`<span style="font-size:13px;color:${ok?'var(--green)':'var(--text-sub)'}">${ok?'✅ 已确认执行':'❌ 已取消'}</span>`;
   if(ok&&DD){DD.tools[0].needs_confirmation=false;DD.tools[0].result={status:'executed',message:'设备已执行'};}
-  setTimeout(()=>{addMsg('assistant',ok?sc.response_confirmed:sc.response_cancelled);updDr()},500);
+
+  const sent = !!(window.SilverPilotAPI && typeof window.SilverPilotAPI.sendHITL==='function' && window.SilverPilotAPI.sendHITL(!!ok));
+
+  if(!sent){
+    setTimeout(()=>{addMsg('assistant',ok?sc.response_confirmed:sc.response_cancelled);updDr()},500);
+  }else{
+    updDr();
+  }
 }
 
 function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\n/g,'<br>')}
@@ -511,7 +526,16 @@ function updDr(){const el=document.getElementById('dBody');if(!DD){el.innerHTML=
 function rPipe(){
   const el=document.getElementById('dBody');
   if(!DD)return;
-  const ns=DD.pipeline||[];
+  const nsRaw=DD.pipeline||[];
+  const ns=[];
+  const seen=new Set();
+  for(let i=0;i<nsRaw.length;i++){
+    const n=nsRaw[i]||{};
+    const k=`${n.group_id||''}|${n.event_seq||0}|${n.name||''}`;
+    if(seen.has(k))continue;
+    seen.add(k);
+    ns.push(n);
+  }
 
   const toMs=(t)=>{if(typeof t!=='string')return 0;const s=t.trim().toLowerCase();if(s.endsWith('ms'))return parseFloat(s)||0;if(s.endsWith('s'))return (parseFloat(s)||0)*1000;return parseFloat(s)||0};
   const fmtMs=(ms)=>ms<100?`${ms.toFixed(0)}ms`:`${(ms/1000).toFixed(2)}s`;
@@ -546,7 +570,7 @@ function rPipe(){
       segDurationMs=segNodes.reduce((sum,n)=>sum+toMs(n.time||'0ms'),0);
       segTip='段耗时口径：串行 sum';
     }
-    h+=`<div class="pipe-seg"><span class="pipe-seg-tag ${meta.cls}">${meta.label} · ${segNodeCount} 节点 · ${fmtMs(segDurationMs)}<span class="pipe-seg-tip" data-tip="${segTip}">i</span></span>`;
+    h+=`<div class="pipe-seg"><span class="pipe-seg-tag ${meta.cls}">${meta.label} · ${segNodeCount} 节点 · ${fmtMs(segDurationMs)}<span class="pipe-seg-tip" data-tip="${segTip}">i</span></span><div class="pipe-lane">`;
     let i=0;
     while(i<segNodes.length){
       const n=segNodes[i];
@@ -554,21 +578,19 @@ function rPipe(){
         let j=i;
         const g=[];
         while(j<segNodes.length&&segNodes[j].parallel){g.push(segNodes[j]);j++}
-        h+='<div class="pipe-parallel-group"><span class="pipe-parallel-label">PARALLEL</span>';
-        g.forEach((pn,k)=>{
-          h+=`<div class="pipe-node ${pn.status||'done'}" style="background:${pn.color}12;border-color:${pn.status==='active'?pn.color:'transparent'}"><span class="pipe-dot" style="background:${pn.color}"></span><span style="color:${pn.color}">${pn.name}</span>${pn.status==='done'?`<span class="mono" style="color:var(--text-hint);font-size:9px">${pn.time}</span>`:''}</div>`;
-          if(k<g.length-1)h+='<span class="pipe-arr">│</span>';
+        h+=`<div class="pipe-lane-row parallel"><div class="pipe-parallel-group"><span class="pipe-parallel-label">PARALLEL × ${g.length}</span><div class="pipe-parallel-grid">`;
+        g.forEach((pn)=>{
+          h+=`<div class="pipe-node ${pn.status||'done'}" style="background:${pn.color}12;border-color:${pn.status==='active'?pn.color:'transparent'}"><span class="pipe-dot" style="background:${pn.color}"></span><span class="pipe-node-name" style="color:${pn.color}">${pn.name}</span>${pn.status==='done'?`<span class="pipe-node-time mono">${pn.time}</span>`:''}</div>`;
         });
-        h+='</div>';
+        h+='</div></div></div>';
         i=j;
       }else{
-        h+=`<div class="pipe-node ${n.status||'done'}" style="background:${n.color}12;border-color:${n.status==='active'?n.color:'transparent'}"><span class="pipe-dot" style="background:${n.color}"></span><span style="color:${n.color}">${n.name}</span>${n.status==='done'?`<span class="mono" style="color:var(--text-hint);font-size:9px">${n.time}</span>`:''}</div>`;
+        h+=`<div class="pipe-lane-row"><div class="pipe-node ${n.status||'done'}" style="background:${n.color}12;border-color:${n.status==='active'?n.color:'transparent'}"><span class="pipe-dot" style="background:${n.color}"></span><span class="pipe-node-name" style="color:${n.color}">${n.name}</span>${n.status==='done'?`<span class="pipe-node-time mono">${n.time}</span>`:''}</div></div>`;
         i++;
       }
-      if(i<segNodes.length)h+='<span class="pipe-arr">→</span>';
     }
-    h+='</div>';
-    if(segIdx<segments.length-1)h+='<span class="pipe-arr">→</span>';
+    h+='</div></div>';
+    if(segIdx<segments.length-1)h+='<div class="pipe-seg-divider"></div>';
   });
   h+='</div>';
   const dn=ns.filter(n=>n.status==='done');
@@ -588,7 +610,7 @@ function rPipe(){
   if(DD.perception)h+=`<div style="margin-top:10px"><div class="rag-title">Perception Output</div><div class="rag-chunk" style="border-color:var(--n-per)">${esc(DD.perception.image_context)}</div></div>`;
   el.innerHTML=h;
 }
-function rInt(){const el=document.getElementById('dBody');if(!DD?.intents?.length){el.innerHTML='<div style="color:var(--text-hint);font-size:13px;padding:20px 0">无意图数据</div>';return}let h=`<div class="mono" style="font-size:10px;color:var(--text-hint);margin-bottom:8px">Supervisor 识别 ${DD.intents.length} 个意图</div>`;DD.intents.forEach(i=>{h+=`<div class="intent-item" style="border-color:${i.color}"><span class="intent-type" style="background:${i.color}15;color:${i.color}">${i.type}</span><span class="intent-q">${i.query}</span><span class="intent-p">P${i.priority}</span>${i.parallel?'<span class="intent-p" style="color:var(--accent)">⚡并行</span>':''}</div>`});el.innerHTML=h}
+function rInt(){const el=document.getElementById('dBody');if(!DD?.intents?.length){el.innerHTML='<div style="color:var(--text-hint);font-size:13px;padding:20px 0">无意图数据</div>';return}const seen=new Set(),its=[];(DD.intents||[]).forEach(i=>{const k=`${i.type||''}|${(i.query||'').trim()}`;if(seen.has(k))return;seen.add(k);its.push(i)});let h=`<div class="mono" style="font-size:10px;color:var(--text-hint);margin-bottom:8px">Supervisor 识别 ${its.length} 个意图</div>`;its.forEach(i=>{h+=`<div class="intent-item" style="border-color:${i.color}"><span class="intent-type" style="background:${i.color}15;color:${i.color}">${i.type}</span><span class="intent-q">${i.query}</span><span class="intent-p">P${i.priority}</span>${i.parallel?'<span class="intent-p" style="color:var(--accent)">⚡并行</span>':''}</div>`});el.innerHTML=h}
 function rRag(){const el=document.getElementById('dBody'),r=DD?.rag;if(!r){el.innerHTML='<div style="color:var(--text-hint);font-size:13px;padding:20px 0">未触发 RAG 检索</div>';return}let h=`<div class="rag-title">Query Rewrite</div><div style="font-size:12px;padding:6px 9px;background:var(--accent-bg);border-radius:7px;color:var(--accent);margin-bottom:6px">"${r.query_rewrite}"</div>`;if(r.graph_results?.length){h+='<div class="rag-title">GraphRAG</div>';r.graph_results.forEach(c=>{const cl=c.layer==='reasoning_path'?'var(--n-sup)':'var(--n-med)';h+=`<div class="rag-chunk" style="border-color:${cl}">${esc(c.content)}<div class="rag-chunk-m"><span>${c.source}</span><span>${c.layer}</span><span>score:${c.score}</span></div></div>`})}if(r.vector_results?.length){h+='<div class="rag-title">Vector Search</div>';r.vector_results.forEach(c=>{h+=`<div class="rag-chunk" style="border-color:var(--blue)">${esc(c.content)}<div class="rag-chunk-m"><span>${c.source}</span><span>score:${c.score}</span></div></div>`})}h+=`<div class="rag-title">Faithfulness Check</div><div class="hal-meter"><span style="font-size:11px;color:var(--text-sub);width:55px">幻觉分数</span><div class="hal-bar"><div class="hal-fill" style="width:${r.hallucination_score*100}%;background:${r.hallucination_score<.3?'var(--green)':'var(--yellow)'}"></div></div><span class="hal-sc" style="color:${r.hallucination_score<.3?'var(--green)':'var(--yellow)'}">${r.hallucination_score.toFixed(2)}</span><span style="font-size:10px;padding:2px 6px;border-radius:4px;background:${r.verdict==='pass'?'var(--green-bg)':'var(--red-bg)'};color:${r.verdict==='pass'?'var(--green)':'var(--red)'};font-weight:600">${r.verdict.toUpperCase()}</span></div>`;el.innerHTML=h}
 function rTool(){const el=document.getElementById('dBody'),ts=DD?.tools;if(!ts?.length){el.innerHTML='<div style="color:var(--text-hint);font-size:13px;padding:20px 0">未触发工具调用</div>';return}el.innerHTML=ts.map(t=>`<div class="tool-card"><div class="tool-nm">${t.name}<span class="tool-risk ${t.risk}">${t.risk.toUpperCase()}</span></div><div class="tool-args">${JSON.stringify(t.args,null,2)}</div>${t.needs_confirmation?'<div style="margin-top:5px;font-size:10px;color:var(--yellow)">⏳ HITL interrupt</div>':t.result?`<div style="margin-top:5px;font-size:10px;color:var(--green);font-family:JetBrains Mono,monospace">✓ ${JSON.stringify(t.result)}</div>`:''}</div>`).join('')}
 function rEnt(){const el=document.getElementById('dBody'),es=DD?.entities;if(!es?.length){el.innerHTML='<div style="color:var(--text-hint);font-size:13px;padding:20px 0">未提取到实体</div>';return}let h='<div class="rag-title">Entity Linking</div><div class="ent-chips">';es.forEach(e=>{h+=`<div class="ent-chip ${e.linked?'linked':'unlinked'}"><span style="width:5px;height:5px;border-radius:50%;background:${e.linked?'var(--green)':'var(--red)'}"></span>${e.name}<span style="font-size:9px;opacity:.7">${e.label}</span></div>`});h+='</div>';es.forEach(e=>{h+=`<div class="ent-det"><span style="color:var(--text-sub)">"${e.name}"</span><span style="color:var(--text-hint)"> → </span><span style="color:${e.linked?'var(--green)':'var(--red)'}">${e.linked?e.neo4j_name:'NOT_LINKED'}</span><span style="color:var(--text-hint)"> score:${e.score}</span></div>`});el.innerHTML=h}

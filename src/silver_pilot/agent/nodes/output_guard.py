@@ -92,7 +92,12 @@ def output_guard_node(state: AgentState) -> dict:
     Returns:
         dict: 包含本轮的状态更新与重置
     """
-    final_response = "\n".join(state.get("sub_response", []))
+    synthesized = state.get("final_response", "")
+    final_response = (
+        synthesized
+        if isinstance(synthesized, str) and synthesized
+        else "\n".join(state.get("sub_response", []))
+    )
     safety_flags = list(state.get("safety_flags", []))
 
     logger.info(f"Output Guard 开始审查 | 回复长度={len(final_response)}")
@@ -137,6 +142,7 @@ def output_guard_node(state: AgentState) -> dict:
         "risk_level": "low",
         "loop_count": 0,
         "rag_context": "",
+        "rag_query_rewrite": "",
         "linked_entities": [],
         "hallucination_score": 0.0,
         "tool_calls": [],

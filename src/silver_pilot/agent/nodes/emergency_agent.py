@@ -92,7 +92,7 @@ def emergency_agent_node(state: AgentState) -> dict:
         "tool_results": alert_results,
         "safety_flags": safety_flags,
         "risk_level": "critical",
-        "sub_response": state.get("sub_response", []) + [sub_response],
+        "sub_response": [sub_response],
     }
 
 

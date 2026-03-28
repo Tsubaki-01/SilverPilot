@@ -97,7 +97,7 @@ def device_agent_node(state: AgentState) -> dict:
             "messages": [AIMessage(content=response_text)],
             "tool_calls": [],
             "tool_results": [],
-            "sub_response": state.get("sub_response", []) + [response_text],
+            "sub_response": [response_text],
         }
 
     # ── 阶段 2 & 3: 逐个执行工具调用 ──
@@ -111,8 +111,9 @@ def device_agent_node(state: AgentState) -> dict:
             ],
             "tool_calls": [],
             "tool_results": [],
-            "sub_response": state.get("sub_response", [])
-            + ["抱歉，我没有理解您的指令。您可以试着说具体一些，比如「明天早上7点提醒我吃药」。"],
+            "sub_response": [
+                "抱歉，我没有理解您的指令。您可以试着说具体一些，比如「明天早上7点提醒我吃药」。"
+            ],
         }
 
     all_results: list[dict] = []
@@ -138,7 +139,7 @@ def device_agent_node(state: AgentState) -> dict:
         "messages": [AIMessage(content=response_text)],
         "tool_calls": [c for c in parsed_calls],
         "tool_results": all_results,
-        "sub_response": state.get("sub_response", []) + [response_text],
+        "sub_response": [response_text],
     }
 
 

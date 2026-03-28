@@ -21,8 +21,11 @@ messages:
       3. 每个意图需要有独立的、可回答的 sub_query
       4. 如果情感标签为 SAD/FEARFUL 此类且涉及身体不适，优先归类为 EMERGENCY
       5. 如果无法确定意图，归类为 CHITCHAT
-      6. priority 数值越小优先级越高
-      7. risk_level 取值：low / medium / high / critical
+      6. 对话的历史记录和用户画像信息也可能包含有助于意图识别的线索，请合理利用
+      7. 不要混淆历史记录和当前用户输入，提取意图时以当前用户输入为主，
+         历史记录和用户画像仅作为辅助参考，不出现在当前用户输入的内容不能作为意图识别的依据
+      8. priority 数值越小优先级越高
+      9. risk_level 取值：low / medium / high / critical
 
       ### Output Format
       请严格输出以下 JSON 格式，不要输出任何其他内容：
@@ -69,7 +72,7 @@ messages:
 
   - role: "user"
     content: |
-      **用户输入**: {{ user_query }}
+      **用户消息**: {{ user_query }}
       {% if current_audio_context %}
       **音频输入**: {{ current_audio_context }}
       **用户情感**: {{ user_emotion }}
@@ -78,7 +81,7 @@ messages:
       **图片输入**: {{ current_image_context }}
       {% endif %}
       {% if conversation_summary %}
-      **对话摘要**: {{ conversation_summary }}
+      **对话历史摘要**: {{ conversation_summary }}
       {% endif %}
       {% if user_profile_summary %}
       **用户画像**: {{ user_profile_summary }}

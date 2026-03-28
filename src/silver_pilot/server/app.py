@@ -384,6 +384,8 @@ async def _handle_chat(ws: WebSocket, sid: str, inc: WSIncoming) -> None:
     msg_metadata = {}
     if inc.image_path:
         msg_metadata["image_path"] = inc.image_path
+    if inc.image_url:
+        msg_metadata["image_url"] = inc.image_url
     if inc.audio_path:
         msg_metadata["audio_path"] = inc.audio_path
 
@@ -436,8 +438,13 @@ async def _agent_response(ws: WebSocket, sid: str, inc: WSIncoming) -> None:
         # 逐节点流式处理，每个节点实时发送 WS 事件
         events = await asyncio.to_thread(_stream_with_timing, inp, cfg)
         print(f"[Agent] 共 {len(events)} 个节点事件")
+        has_interrupt_event = any(node_name == "__interrupt__" for node_name, _, _ in events)
 
         for node_name, node_output, duration_ms in events:
+            if node_name == "__interrupt__":
+                # 中断是控制事件，不应作为可视化节点渲染。
+                continue
+
             display_name = NODE_DISPLAY_NAMES.get(node_name, node_name)
             color = NODE_COLORS.get(display_name, "var(--text-sub)")
             in_parallel_flow = any(i.get("parallel") for i in dbg.get("intents", []))
@@ -501,6 +508,11 @@ async def _agent_response(ws: WebSocket, sid: str, inc: WSIncoming) -> None:
 
             # 输出并行执行可观测摘要（用于前端或排障）
             _fill_timing_summary(dbg)
+
+        if has_interrupt_event:
+            print("[Agent] 检测到 __interrupt__，转入 HITL 流程")
+            await _hitl(ws, sid, cfg, dbg, event_seq_start=event_seq)
+            return
 
         # 提取最终响应
         resp = await asyncio.to_thread(_final_resp, cfg)
@@ -661,6 +673,12 @@ def _fill_debug(name: str, out: dict, dbg: dict) -> None:
                     )
             elif ca and ca != "done":
                 intent_type = INTENT_MAP.get(ca, "CHITCHAT")
+                # 单意图模式下 current_sub_query 与 pending_intents[0] 通常等价，
+                # 仅写入一条，避免前端展示重复意图。
+                if not sq:
+                    first_pending = out.get("pending_intents", [])
+                    if isinstance(first_pending, list) and first_pending:
+                        sq = first_pending[0].get("sub_query", "")
                 dbg["intents"].insert(
                     0,
                     {
@@ -670,21 +688,11 @@ def _fill_debug(name: str, out: dict, dbg: dict) -> None:
                         "color": INTENT_COLORS.get(intent_type, "var(--text-sub)"),
                     },
                 )
-                for i in out.get("pending_intents", []):
-                    itype = i.get("type", "CHITCHAT")
-                    dbg["intents"].append(
-                        {
-                            "type": itype,
-                            "query": i.get("sub_query", ""),
-                            "priority": i.get("priority", 9),
-                            "color": INTENT_COLORS.get(itype, "var(--text-sub)"),
-                        }
-                    )
 
         elif name == "medical_agent":
             if out.get("rag_context"):
                 dbg["rag"] = {
-                    "query_rewrite": "",  # 来自 pipeline 内部，暂用空
+                    "query_rewrite": out.get("rag_query_rewrite", ""),
                     "context_text": out.get("rag_context", ""),
                     "graph_results": [],
                     "vector_results": [],
@@ -741,9 +749,21 @@ async def _hitl(ws: WebSocket, sid: str, cfg: dict, dbg: dict, event_seq_start: 
     print(f"[HITL] data: {idata}")
     await ws.send_text(WSOutgoing(type="hitl_request", data=idata).model_dump_json())
 
-    raw = await ws.receive_text()
-    resp = WSIncoming.model_validate_json(raw)
-    rv = "确认" if resp.confirmed else "取消"
+    # 仅接受 hitl_response，避免把普通 message 误当作确认结果导致状态错乱。
+    while True:
+        raw = await ws.receive_text()
+        resp = WSIncoming.model_validate_json(raw)
+        if resp.type == "hitl_response" and resp.confirmed is not None:
+            rv = "确认" if resp.confirmed else "取消"
+            break
+
+        await ws.send_text(
+            WSOutgoing(
+                type="error",
+                message="当前有待确认操作，请点击弹窗中的“确认执行”或“取消”。",
+            ).model_dump_json()
+        )
+
     print(f"[HITL] 用户: {rv}")
 
     try:

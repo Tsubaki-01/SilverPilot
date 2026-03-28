@@ -47,13 +47,13 @@ def response_synthesizer_node(state: AgentState) -> dict:
         1. 提取最后一条 HumanMessage 之后的所有 AIMessage
         2. 如果只有 1 条 → 直接透传（省去 LLM 开销）
         3. 如果有多条 → 调用 LLM 综合为一条回复
-        4. 将结果写入 sub_response（供 output_guard 消费）
+        4. 将结果写入 final_response（供 output_guard 消费）
 
     Args:
         state: 当前 AgentState
 
     Returns:
-        dict: 包含 sub_response 的状态更新
+        dict: 包含 final_response 的状态更新
     """
     messages = state.get("messages", [])
     user_query, ai_messages = extract_ai_messages_after_last_human(messages)
@@ -65,18 +65,18 @@ def response_synthesizer_node(state: AgentState) -> dict:
     # 无内容：兜底
     if not ai_messages:
         logger.warning("无 AI 回复可综合，返回空")
-        return {"sub_response": state.get("sub_response", [])}
+        return {"final_response": ""}
 
     # 单条回复：直接透传
     if len(ai_messages) == 1:
         logger.info("仅一条 AI 回复，跳过 LLM 综合，直接透传")
-        return {"sub_response": [message_to_text(ai_messages[0])]}
+        return {"final_response": message_to_text(ai_messages[0])}
 
     # 多条回复：LLM 综合
     synthesized = _synthesize_responses(user_query, ai_messages)
 
     logger.info(f"Response Synthesizer 完成 | 综合回复长度={len(synthesized)}")
-    return {"sub_response": [synthesized]}
+    return {"final_response": synthesized}
 
 
 def _synthesize_responses(user_query: str, ai_messages: list[AIMessage]) -> str:

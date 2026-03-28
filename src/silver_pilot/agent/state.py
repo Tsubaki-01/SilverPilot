@@ -133,6 +133,9 @@ class AgentState(TypedDict):
     rag_context: str
     """RAGPipeline 返回的检索上下文。"""
 
+    rag_query_rewrite: str
+    """RAG 查询重写结果（用于调试面板展示）。"""
+
     linked_entities: Annotated[list[dict], merge_lists]
     """实体链接阶段的结果列表。"""
 
@@ -195,6 +198,7 @@ def create_initial_state() -> dict:
         "total_turns": 0,
         "last_profile_extract_at": 0,
         "rag_context": "",
+        "rag_query_rewrite": "",
         "linked_entities": [],
         "user_profile": {},
         "hallucination_score": 0.0,
