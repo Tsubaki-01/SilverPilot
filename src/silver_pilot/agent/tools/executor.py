@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from silver_pilot.config import config
+from silver_pilot.tools.MCP import MCP_TOOL_NAMES, MCPClient
 from silver_pilot.utils import get_channel_logger
 
 from .schemas import TOOL_REGISTRY, RiskLevel
@@ -18,6 +19,20 @@ from .schemas import TOOL_REGISTRY, RiskLevel
 LOG_FILE_DIR: Path = config.LOG_DIR / "agent"
 logger = get_channel_logger(LOG_FILE_DIR, "tool_executor")
 # ========================================
+
+# ================= MCP Client 单例 =================
+# 由 bootstrap 注入；未注入时 MCP 工具自动降级为模拟实现
+_mcp_client: MCPClient | None = None
+
+
+def set_mcp_client(client: MCPClient) -> None:
+    """注入 MCPClient 单例（由 bootstrap 调用）。"""
+    global _mcp_client
+    _mcp_client = client
+    logger.info("ToolExecutor: MCPClient 已注入")
+
+
+# ===================================================
 
 
 class ToolExecutionResult:
@@ -87,11 +102,15 @@ class ToolExecutor:
     # ================= 类级常量 (策略配置) =================
     _DEFAULT_TOOL_RISKS: dict[str, RiskLevel] = {
         "query_weather": RiskLevel.LOW,
+        "weather_forecast": RiskLevel.LOW,
         "set_reminder": RiskLevel.LOW,
         "set_calendar": RiskLevel.LOW,
         "control_device": RiskLevel.MEDIUM,
         "send_alert": RiskLevel.HIGH,
     }
+
+    # 经由 MCP Server 执行的工具名集合（非模拟，真实 API 调用）
+    _MCP_TOOLS: frozenset[str] = MCP_TOOL_NAMES
 
     _CONFIRMATION_TEMPLATES: dict[str, str] = {
         "control_device": (
@@ -211,12 +230,24 @@ class ToolExecutor:
         """
         执行具体的工具逻辑。
 
-        当前阶段使用模拟实现，后续接入真实 API。
-        每个工具返回结构化的执行结果。
+        路由策略：
+          - MCP 工具（query_weather / weather_forecast）且 MCPClient 已注入
+            → 调用 MCPClient.call_tool()（真实 Open-Meteo API）
+          - 其余工具，或 MCPClient 未注入时的降级
+            → _simulate_tool_execution()（模拟实现）
         """
         try:
-            # ── 模拟执行（后续替换为真实 API 调用）──
-            result = self._simulate_tool_execution(tool_name, parsed_input)
+            if tool_name in self._MCP_TOOLS and _mcp_client is not None:
+                # ── MCP 真实调用 ──
+                logger.info(f"MCP 工具路由 | tool={tool_name}")
+                result = _mcp_client.call_tool(
+                    tool_name, parsed_input.model_dump(exclude={"risk_level"})
+                )
+            else:
+                # ── 模拟执行（降级路径）──
+                if tool_name in self._MCP_TOOLS:
+                    logger.warning(f"MCPClient 未注入，{tool_name} 走模拟降级路径")
+                result = self._simulate_tool_execution(tool_name, parsed_input)
 
             logger.info(f"工具执行成功 | tool={tool_name} | result={result}")
             return ToolExecutionResult(
