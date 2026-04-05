@@ -26,7 +26,7 @@ from .nodes.device_agent import set_executor
 from .nodes.medical_agent import set_pipeline
 from .nodes.memory_writer import set_profile_manager
 from .nodes.output_guard import set_summarizer
-from .tools.executor import ToolExecutor
+from .tools.executor import ToolExecutor, set_mcp_client
 
 logger = get_channel_logger(config.LOG_DIR / "agent", "bootstrap")
 
@@ -79,6 +79,20 @@ def initialize_agent(
 
     executor = ToolExecutor()
     set_executor(executor)
+
+    # MCPClient：初始化失败时记录警告，天气工具自动降级为模拟路径
+    try:
+        from silver_pilot.tools.MCP.mcp_client import MCPClient
+
+        mcp_client = MCPClient()
+        set_mcp_client(mcp_client)
+        logger.info("[2/3] MCPClient 就绪（query_weather / weather_forecast 已接入 MCP）")
+    except Exception as e:
+        logger.warning(
+            f"[2/3] MCPClient 初始化失败: {e}，"
+            "天气工具将走模拟降级路径"
+        )
+
     summarizer = ConversationSummarizer()
     set_summarizer(summarizer)
     logger.info("[2/3] 组件就绪")
