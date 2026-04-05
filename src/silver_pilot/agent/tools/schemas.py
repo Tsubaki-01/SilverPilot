@@ -79,6 +79,14 @@ class WeatherQueryInput(BaseModel):
     risk_level: RiskLevel = Field(default=RiskLevel.LOW, description="操作风险等级")
 
 
+class WeatherForecastInput(BaseModel):
+    """多日天气预报工具的输入参数（由 MCP Server 执行）。"""
+
+    location: str = Field(description="查询城市，如 '广州'、'成都'")
+    days: int = Field(default=3, description="预报天数，范围 1-7")
+    risk_level: RiskLevel = Field(default=RiskLevel.LOW, description="操作风险等级")
+
+
 class CalendarEventInput(BaseModel):
     """日历事件工具的输入参数。"""
 
@@ -98,6 +106,7 @@ TOOL_REGISTRY: dict[str, type[BaseModel]] = {
     "control_device": DeviceControlInput,
     "send_alert": SendAlertInput,
     "query_weather": WeatherQueryInput,
+    "weather_forecast": WeatherForecastInput,
     "set_calendar": CalendarEventInput,
 }
 """工具名称到输入 Schema 的映射表，供 Device Agent 解析和校验使用。"""

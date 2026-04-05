@@ -35,6 +35,10 @@ messages:
          - message: str: 通知内容
          - urgency: str: normal / urgent / critical
 
+      6. **weather_forecast**: 查询多日天气预报
+         - location: str: 城市名称
+         - days: int: 预报天数（1-7）
+
       ### Rules
       1. 当前时间: {{ current_time }}，据此计算相对时间
       2. 天气查询未指定地点时默认"本地"

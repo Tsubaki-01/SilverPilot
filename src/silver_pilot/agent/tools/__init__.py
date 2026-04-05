@@ -14,6 +14,7 @@ if TYPE_CHECKING:
         RiskLevel,
         SendAlertInput,
         SetReminderInput,
+        WeatherForecastInput,
         WeatherQueryInput,
     )
 
@@ -27,6 +28,7 @@ __all__ = [
     "DeviceControlInput",
     "SendAlertInput",
     "WeatherQueryInput",
+    "WeatherForecastInput",
     "CalendarEventInput",
 ]
 
@@ -68,4 +70,8 @@ def __getattr__(name: str) -> Any:
         from .schemas import WeatherQueryInput
 
         return WeatherQueryInput
+    if name == "WeatherForecastInput":
+        from .schemas import WeatherForecastInput
+
+        return WeatherForecastInput
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
