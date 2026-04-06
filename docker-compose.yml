@@ -71,7 +71,7 @@ services:
       - silver_net
 
   milvus:
-    image: milvusdb/milvus:v2.3.3
+    image: milvusdb/milvus:v2.6.13
     container_name: silver_milvus
     command: milvus run standalone
     environment:
@@ -88,7 +88,7 @@ services:
       - silver_net
 
   milvus-attu:
-    image: zilliz/attu:v2.3.6
+    image: zilliz/attu:v2.4.6
     container_name: silver_milvus_attu
     ports:
       - "8000:3000"
