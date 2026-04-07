@@ -112,20 +112,8 @@ class VectorRetriever:
                     all_results.append(r)
 
         # 统计
-        qa_count = len(
-            [
-                r
-                for r in all_results
-                if r.source == RetrievalSource.MILVUS_QA
-            ]
-        )
-        kb_count = len(
-            [
-                r
-                for r in all_results
-                if r.source == RetrievalSource.MILVUS_KNOWLEDGE
-            ]
-        )
+        qa_count = len([r for r in all_results if r.source == RetrievalSource.MILVUS_QA])
+        kb_count = len([r for r in all_results if r.source == RetrievalSource.MILVUS_KNOWLEDGE])
 
         logger.info(f"向量检索完成 | QA={qa_count} | KB={kb_count} |模式=hybrid(dense+BM25)")
         return all_results
@@ -139,7 +127,7 @@ class VectorRetriever:
         query: str,
         *,
         top_k: int = DEFAULT_TOP_K,
-        min_score: float = 0.02,
+        min_score: float = 0.005,
     ) -> list[RetrievalResult]:
         """
         在 medical_qa_lite 中利用 Milvus 原生 hybrid_search
@@ -189,7 +177,7 @@ class VectorRetriever:
         *,
         top_k: int = DEFAULT_TOP_K,
         expr: str | None = None,
-        min_score: float = 0.4,
+        min_score: float = 0.05,
     ) -> list[RetrievalResult]:
         """
         在 medical_knowledge_base 中检索相关文档片段。
@@ -229,7 +217,7 @@ class VectorRetriever:
         *,
         top_k: int = DEFAULT_TOP_K,
         expr: str | None = None,
-        min_score: float = 0.02,
+        min_score: float = 0.005,
     ) -> list[RetrievalResult]:
         """对知识库执行混合检索 (Dense + BM25)。"""
         try:
@@ -280,7 +268,7 @@ class VectorRetriever:
     def _parse_hybrid_qa_results(
         results: list,
         *,
-        min_score: float = 0.02,
+        min_score: float = 0.005,
     ) -> list[RetrievalResult]:
         """解析 QA 库的 hybrid_search 结果（RRF 融合后）。"""
         retrieval_results: list[RetrievalResult] = []
@@ -322,7 +310,7 @@ class VectorRetriever:
     def _parse_hybrid_kb_results(
         results: list,
         *,
-        min_score: float = 0.02,
+        min_score: float = 0.005,
     ) -> list[RetrievalResult]:
         """解析知识库的 hybrid_search 结果（RRF 融合后）。"""
         retrieval_results: list[RetrievalResult] = []

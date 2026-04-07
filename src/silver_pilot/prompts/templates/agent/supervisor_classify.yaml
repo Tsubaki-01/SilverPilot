@@ -60,15 +60,6 @@ messages:
         "risk_level": "critical"
       }
 
-      **Input**: "今天天气怎么样，下午有没有雨"
-      **User Emotion**: NEUTRAL
-      **Output**:
-      {
-        "intents": [
-          {"type": "DEVICE_CONTROL", "sub_query": "查询今天天气和下午是否有雨", "priority": 2}
-        ],
-        "risk_level": "low"
-      }
 
   - role: "user"
     content: |

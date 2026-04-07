@@ -438,7 +438,6 @@ class CommunityBuilder:
         results = [self._id_to_community[cid] for cid in filtered_ids]
         scores = [hit_scores[cid] for cid in filtered_ids]
 
-        logger.debug(f"社区检索完成 | 命中={len(results)}")
         return results, scores
 
     # ──────────────────────────────────────────────────

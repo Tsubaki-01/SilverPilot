@@ -25,13 +25,8 @@ messages:
       ### Task 3: 医学实体抽取
       从 **重写后的查询** 中抽取所有医学实体，并标注类型。
       实体类型必须属于以下枚举值：
-      [DISEASE = "Disease", "Symptom","Complication","Treatment","PathologicalType",
-      "Diagnosis","Pathophysiology","DiseaseSite","Department","MultipleGroups","Cause",
-      "PrognosticSurvivalTime","Prognosis","Attribute","DiseaseRate","Drug","DrugTherapy",
-      "AdjuvantTherapy","Operation","Pathogenesis","SymptomAndSign","TreatmentPrograms",
-      "RelatedDisease","RelatedSymptom","Check","Infectious","RelatedTo","AuxiliaryExamination",
-      "Stage","SpreadWay","Type","Precautions","Subject","Ingredients","OTC","AdverseReactions",
-      "Indications","CheckSubject", "Unknown"]
+      ["Disease", "Symptom", "DiseaseSite", "Cause", "Examination", "Treatment", "Drug",
+       "Complication", "Prognosis", "Department", "AdverseReactions", "Unknown"]
 
       ### Output Format
       请严格输出以下 JSON 格式，不要输出任何其他内容：
@@ -75,10 +70,10 @@ messages:
 
       **用户查询**: {{ user_query }}
       {% if image_context %}
-      **图像上下文**（来自用户拍照的 OCR/描述结果）: {{ image_context }}
+      **图像上下文**: {{ image_context }}
       {% endif %}
       {% if conversation_context %}
-      **对话上下文**（最近几轮对话摘要）: {{ conversation_context }}
+      **对话上下文**: {{ conversation_context }}
       {% endif %}
 
       请直接输出 JSON。
