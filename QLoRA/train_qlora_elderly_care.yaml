@@ -1,10 +1,5 @@
 ### ====== 模型 ======
-# Qwen2.5-7B 方案
-# model_name_or_path: Qwen/Qwen2.5-7B-Instruct
-# template: qwen
-
-# Qwen3.5-4B 方案（取消下面两行注释，注释上面两行）
-model_name_or_path: Qwen/Qwen3.5-4B
+model_name_or_path: Qwen/Qwen3.5-0.8B
 template: qwen3_nothink  # 不需要 thinking 输出用 nothink；需要则用 qwen3
 
 ### ====== 训练方式 ======
@@ -52,6 +47,7 @@ eval_steps: 200
 eval_strategy: steps
 save_total_limit: 3
 load_best_model_at_end: true
+metric_for_best_model: eval_loss
 
 ### ====== 其他 ======
 plot_loss: true

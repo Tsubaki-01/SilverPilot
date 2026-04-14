@@ -1,0 +1,11 @@
+### LoRA 权重合并配置
+
+model_name_or_path: Qwen/Qwen3.5-0.8B
+adapter_name_or_path: ./output/elderly_care_lora
+template: qwen
+finetuning_type: lora
+
+### 导出
+export_dir: ./elderly_care_merged
+export_size: 2
+export_legacy_format: false
