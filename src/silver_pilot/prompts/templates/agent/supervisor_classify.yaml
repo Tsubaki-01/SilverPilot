@@ -26,13 +26,15 @@ messages:
          历史记录和用户画像仅作为辅助参考，不出现在当前用户输入的内容不能作为意图识别的依据
       8. priority 数值越小优先级越高
       9. risk_level 取值：low / medium / high / critical
+      10. 如果意图之间存在先后依赖（如“先A再B”），请在后续意图中填写 depends_on，
+          值为其依赖意图的 priority 列表；无依赖时返回空数组 []
 
       ### Output Format
       请严格输出以下 JSON 格式，不要输出任何其他内容：
       {
         "intents": [
-          {"type": "MEDICAL_QUERY", "sub_query": "具体子查询", "priority": 1},
-          {"type": "DEVICE_CONTROL", "sub_query": "具体子查询", "priority": 2}
+          {"type": "MEDICAL_QUERY", "sub_query": "具体子查询", "priority": 1, "depends_on": []},
+          {"type": "DEVICE_CONTROL", "sub_query": "具体子查询", "priority": 2, "depends_on": [1]}
         ],
         "risk_level": "low"
       }
@@ -44,8 +46,19 @@ messages:
       **Output**:
       {
         "intents": [
-          {"type": "MEDICAL_QUERY", "sub_query": "阿司匹林一天吃几次", "priority": 1},
-          {"type": "DEVICE_CONTROL", "sub_query": "设置明天早上7点吃药提醒", "priority": 2}
+          {"type": "MEDICAL_QUERY", "sub_query": "阿司匹林一天吃几次", "priority": 1, "depends_on": []},
+          {"type": "DEVICE_CONTROL", "sub_query": "设置明天早上7点吃药提醒", "priority": 2, "depends_on": []}
+        ],
+        "risk_level": "low"
+      }
+
+      **Input**: "先告诉我布洛芬怎么吃，然后再帮我设一个今晚8点提醒"
+      **User Emotion**: NEUTRAL
+      **Output**:
+      {
+        "intents": [
+          {"type": "MEDICAL_QUERY", "sub_query": "布洛芬的服用建议", "priority": 1, "depends_on": []},
+          {"type": "DEVICE_CONTROL", "sub_query": "设置今晚8点吃药提醒", "priority": 2, "depends_on": [1]}
         ],
         "risk_level": "low"
       }
@@ -55,7 +68,7 @@ messages:
       **Output**:
       {
         "intents": [
-          {"type": "EMERGENCY", "sub_query": "用户胸痛伴呼吸困难，情绪恐惧", "priority": 0}
+          {"type": "EMERGENCY", "sub_query": "用户胸痛伴呼吸困难，情绪恐惧", "priority": 0, "depends_on": []}
         ],
         "risk_level": "critical"
       }

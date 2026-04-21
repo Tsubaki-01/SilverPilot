@@ -114,6 +114,9 @@ class AgentState(TypedDict):
     pending_intents: list[dict]
     """待处理的意图队列，每项包含 type、sub_query、priority 字段。"""
 
+    dispatch_intents: list[dict]
+    """当前批次已下发的意图列表（供 route_by_intent 生成路由）。"""
+
     current_agent: str
     """当前正在执行的子 Agent 名称。"""
 
@@ -192,6 +195,7 @@ def create_initial_state() -> dict:
         "current_image_context": "",
         "input_modality": {"text": False, "audio": False, "image": False},
         "pending_intents": [],
+        "dispatch_intents": [],
         "current_agent": "",
         "risk_level": "low",
         "loop_count": 0,

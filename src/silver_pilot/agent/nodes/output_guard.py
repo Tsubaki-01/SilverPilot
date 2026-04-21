@@ -138,6 +138,7 @@ def output_guard_node(state: AgentState) -> dict:
         "current_image_context": "",
         "input_modality": {"text": False, "audio": False, "image": False},
         "pending_intents": [],
+        "dispatch_intents": [],
         "current_agent": "",
         "risk_level": "low",
         "loop_count": 0,

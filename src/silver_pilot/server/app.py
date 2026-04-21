@@ -781,8 +781,10 @@ def _fill_debug(name: str, out: dict, dbg: dict) -> None:
         elif name == "supervisor":
             ca = out.get("current_agent", "")
             sq = out.get("current_sub_query", "")
+            dispatch_intents = out.get("dispatch_intents", [])
             if ca == "parallel":
-                for i in out.get("pending_intents", []):
+                source_intents = dispatch_intents or out.get("pending_intents", [])
+                for i in source_intents:
                     itype = i.get("type", "CHITCHAT")
                     dbg["intents"].append(
                         {
@@ -798,7 +800,7 @@ def _fill_debug(name: str, out: dict, dbg: dict) -> None:
                 # 单意图模式下 current_sub_query 与 pending_intents[0] 通常等价，
                 # 仅写入一条，避免前端展示重复意图。
                 if not sq:
-                    first_pending = out.get("pending_intents", [])
+                    first_pending = dispatch_intents or out.get("pending_intents", [])
                     if isinstance(first_pending, list) and first_pending:
                         sq = first_pending[0].get("sub_query", "")
                 dbg["intents"].insert(

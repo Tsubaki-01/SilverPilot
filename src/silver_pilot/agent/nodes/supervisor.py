@@ -2,15 +2,16 @@
 模块名称：supervisor
 功能描述：Supervisor 循环编排节点，Agent 系统的"大脑"。负责意图分类、复合意图拆解、
          子 Agent 路由调度，以及循环终止判断。通过 LLM 结构化输出实现意图解析，
-         按优先级顺序逐一分发给子 Agent 执行。
+         支持“无依赖并行 + 有依赖顺序”混合调度。
 
 核心职责：
-    1. 调用 LLM 对用户输入进行意图分类（支持复合意图拆解）
-    2. 按优先级排序意图队列，逐一路由到对应子 Agent
-    3. 子 Agent 执行完毕后检查队列是否清空
-    4. 执行循环终止保护（最大循环次数、超时）
+    1. 首次进入时调用 LLM 完成意图分类与优先级排序
+    2. 识别是否存在意图依赖（显式 depends_on + 关键词兜底）
+    3. 无依赖：沿用 Send 并行；有依赖：按队列顺序分批串行
+    4. 子 Agent 执行完毕后回到 Supervisor 继续调度，直到 done
 """
 
+import re
 from pathlib import Path
 
 from langgraph.types import Send
@@ -41,14 +42,14 @@ INTENT_TO_AGENT: dict[str, str] = {
     "CHITCHAT": "chat",
 }
 
-# ── 降级默认返回值 ──
-_FALLBACK_STATE: dict = {
-    "pending_intents": [],
-    "current_agent": "chat",
-    "risk_level": "low",
-    "loop_count": 1,
-    "retry_count": 0,
-}
+# 依赖关系关键词（中英文）
+DEPENDENCY_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"(先|首先).{0,20}(再|然后|接着)"),
+    re.compile(r"(完成后|之后|以后|成功后)"),
+    re.compile(r"(查完|确认完|处理完).{0,12}(再|然后|接着)"),
+    re.compile(r"(根据|按).{0,16}(结果|建议|回复|上一步).{0,12}(再|然后)"),
+    re.compile(r"(first|then|after|once|before)", re.IGNORECASE),
+]
 
 # ────────────────────────────────────────────────────────────
 # Pydantic 结构化输出 Schema
@@ -61,6 +62,10 @@ class IntentItem(BaseModel):
     type: str = Field(description="意图类型: EMERGENCY / MEDICAL_QUERY / DEVICE_CONTROL / CHITCHAT")
     sub_query: str = Field(description="该意图对应的具体子查询")
     priority: int = Field(description="优先级数值，越小越高")
+    depends_on: list[int] = Field(
+        default_factory=list,
+        description="可选依赖项，引用依赖意图的 priority 列表",
+    )
 
 
 class SupervisorOutput(BaseModel):
@@ -77,19 +82,18 @@ class SupervisorOutput(BaseModel):
 
 def supervisor_node(state: AgentState) -> dict:
     """
-    Supervisor 编排节点：一次意图分类 + 一次路由决策。
+    Supervisor 编排节点：首次分类建计划，后续持续调度。
 
     执行逻辑：
-        1. 首次进入调用 LLM 分类并保存意图列表
-        2. EMERGENCY 短路：仅路由到 emergency
-        3. 单意图：路由到对应单个子 Agent
-        4. 多意图：标记 current_agent="parallel"，由 route_by_intent 返回 Send 并行分发
+        1. loop_count == 0：调用 LLM 分类并生成首批分发策略
+        2. loop_count > 0：从 pending_intents 取下一批继续调度
+        3. 无剩余任务：current_agent="done"，进入回复综合
 
     Args:
         state: 当前 AgentState
 
     Returns:
-        dict: 包含 pending_intents、current_agent、risk_level、loop_count 的状态更新
+        dict: 包含 dispatch_intents、pending_intents、current_agent、loop_count 的状态更新
     """
     loop_count = state.get("loop_count", 0)
 
@@ -97,11 +101,19 @@ def supervisor_node(state: AgentState) -> dict:
     if loop_count >= MAX_SUPERVISOR_LOOPS:
         logger.warning(f"达到最大循环次数 {MAX_SUPERVISOR_LOOPS}，强制终止")
         return {
+            "dispatch_intents": [],
             "current_agent": "done",
+            "current_sub_query": "",
         }
 
-    # 新架构中 Supervisor 每轮仅执行一次分类和路由
-    return _classify_and_dispatch(state)
+    next_loop = loop_count + 1
+
+    # 首次进入：分类并下发首批任务
+    if loop_count == 0:
+        return _classify_and_dispatch(state, next_loop=next_loop)
+
+    # 子 Agent 回流后：继续调度剩余任务
+    return _dispatch_next_batch(state, next_loop=next_loop)
 
 
 # ────────────────────────────────────────────────────────────
@@ -109,12 +121,18 @@ def supervisor_node(state: AgentState) -> dict:
 # ────────────────────────────────────────────────────────────
 
 
-def _classify_and_dispatch(state: AgentState) -> dict:
-    """调用 LLM 分类意图并生成一次性分发策略。"""
+def _classify_and_dispatch(state: AgentState, *, next_loop: int) -> dict:
+    """首次调用 LLM 分类，并按依赖关系生成首批分发策略。"""
     user_query = extract_latest_query(state)
+    total_turns = state.get("total_turns", 0) + 1
+
     if not user_query:
         logger.warning("无法提取用户查询，降级为闲聊")
-        return {**_FALLBACK_STATE}
+        return _build_fallback_chat_state(
+            user_query="",
+            next_loop=next_loop,
+            total_turns=total_turns,
+        )
 
     logger.info(f"意图分类开始 | user_query={user_query}")
     # 构建 Prompt 并调用 LLM
@@ -131,26 +149,28 @@ def _classify_and_dispatch(state: AgentState) -> dict:
     parsed = call_llm_parse(SUPERVISOR_LLM_MODEL, messages, SupervisorOutput)
     if parsed is None or not parsed.intents:
         logger.warning("意图分类失败或为空，降级为闲聊")
-        return {**_FALLBACK_STATE}
+        return _build_fallback_chat_state(
+            user_query=user_query,
+            next_loop=next_loop,
+            total_turns=total_turns,
+        )
 
     # 按优先级排序
-    sorted_intents = sorted(
-        [intent.model_dump() for intent in parsed.intents],
-        key=lambda x: x["priority"],
-    )
+    sorted_intents = _normalize_and_sort_intents(parsed.intents, user_query)
 
     # Emergency 短路：仅处理紧急意图
     emergency_intent = next((i for i in sorted_intents if i.get("type") == "EMERGENCY"), None)
     if emergency_intent:
         logger.warning("检测到 EMERGENCY，短路到 emergency_agent")
         return {
-            "pending_intents": [emergency_intent],
+            "pending_intents": [],
+            "dispatch_intents": [emergency_intent],
             "current_agent": "emergency",
             "current_sub_query": emergency_intent.get("sub_query", user_query),
             "risk_level": "critical",
-            "loop_count": 1,
+            "loop_count": next_loop,
             "retry_count": 0,
-            "total_turns": state.get("total_turns", 0) + 1,
+            "total_turns": total_turns,
         }
 
     if len(sorted_intents) == 1:
@@ -158,13 +178,29 @@ def _classify_and_dispatch(state: AgentState) -> dict:
         only_agent = INTENT_TO_AGENT.get(only["type"], "chat")
         logger.info(f"单意图路由 | type={only['type']} | agent={only_agent}")
         return {
-            "pending_intents": sorted_intents,
+            "pending_intents": [],
+            "dispatch_intents": [only],
             "current_agent": only_agent,
             "current_sub_query": only.get("sub_query", ""),
             "risk_level": parsed.risk_level,
-            "loop_count": 1,
+            "loop_count": next_loop,
             "retry_count": 0,
-            "total_turns": state.get("total_turns", 0) + 1,
+            "total_turns": total_turns,
+        }
+
+    if _should_use_sequential_dispatch(user_query, sorted_intents):
+        logger.info(f"检测到依赖关系，多意图顺序调度 | count={len(sorted_intents)}")
+        first, rest = sorted_intents[0], sorted_intents[1:]
+        first_agent = INTENT_TO_AGENT.get(first.get("type", "CHITCHAT"), "chat")
+        return {
+            "pending_intents": rest,
+            "dispatch_intents": [first],
+            "current_agent": first_agent,
+            "current_sub_query": first.get("sub_query", ""),
+            "risk_level": parsed.risk_level,
+            "loop_count": next_loop,
+            "retry_count": 0,
+            "total_turns": total_turns,
         }
 
     logger.info(f"多意图并行路由 | count={len(sorted_intents)}")
@@ -173,14 +209,107 @@ def _classify_and_dispatch(state: AgentState) -> dict:
     )
 
     return {
-        "pending_intents": sorted_intents,
+        "pending_intents": [],
+        "dispatch_intents": sorted_intents,
         "current_agent": "parallel",
         "current_sub_query": "",
         "risk_level": parsed.risk_level,
-        "loop_count": 1,
+        "loop_count": next_loop,
         "retry_count": 0,
-        "total_turns": state.get("total_turns", 0) + 1,
+        "total_turns": total_turns,
     }
+
+
+def _dispatch_next_batch(state: AgentState, *, next_loop: int) -> dict:
+    """子 Agent 回流后，从 pending_intents 继续调度下一批。"""
+    pending = list(state.get("pending_intents", []))
+    if not pending:
+        logger.info("无剩余意图，进入 response_synthesizer")
+        return {
+            "dispatch_intents": [],
+            "current_agent": "done",
+            "current_sub_query": "",
+            "loop_count": next_loop,
+        }
+
+    next_intent = pending[0]
+    remain_intents = pending[1:]
+    next_agent = INTENT_TO_AGENT.get(next_intent.get("type", "CHITCHAT"), "chat")
+
+    logger.info(f"顺序调度下一意图 | type={next_intent.get('type', 'CHITCHAT')} | agent={next_agent}")
+    return {
+        "pending_intents": remain_intents,
+        "dispatch_intents": [next_intent],
+        "current_agent": next_agent,
+        "current_sub_query": next_intent.get("sub_query", ""),
+        "loop_count": next_loop,
+        "retry_count": 0,
+    }
+
+
+def _build_fallback_chat_state(user_query: str, *, next_loop: int, total_turns: int) -> dict:
+    """分类失败时降级到 chat_agent。"""
+    fallback_intent = {
+        "type": "CHITCHAT",
+        "sub_query": user_query,
+        "priority": 9,
+        "depends_on": [],
+    }
+    return {
+        "pending_intents": [],
+        "dispatch_intents": [fallback_intent],
+        "current_agent": "chat",
+        "current_sub_query": user_query,
+        "risk_level": "low",
+        "loop_count": next_loop,
+        "retry_count": 0,
+        "total_turns": total_turns,
+    }
+
+
+def _normalize_and_sort_intents(intents: list[IntentItem], user_query: str) -> list[dict]:
+    """规范化 LLM 意图输出并按 priority 排序。"""
+    normalized: list[dict] = []
+
+    for intent in intents:
+        intent_type = intent.type if intent.type in INTENT_TO_AGENT else "CHITCHAT"
+        sub_query = intent.sub_query.strip() if intent.sub_query else ""
+        if not sub_query:
+            sub_query = user_query
+
+        normalized.append(
+            {
+                "type": intent_type,
+                "sub_query": sub_query,
+                "priority": intent.priority,
+                "depends_on": list(intent.depends_on),
+            }
+        )
+
+    normalized.sort(key=lambda x: x.get("priority", 999))
+    return normalized
+
+
+def _should_use_sequential_dispatch(user_query: str, intents: list[dict]) -> bool:
+    """判断复合意图是否应转为顺序调度。"""
+    if len(intents) <= 1:
+        return False
+
+    if any(intent.get("depends_on") for intent in intents):
+        return True
+
+    if _has_dependency_signal(user_query):
+        return True
+
+    sub_query_text = "；".join(str(intent.get("sub_query", "")) for intent in intents)
+    return _has_dependency_signal(sub_query_text)
+
+
+def _has_dependency_signal(text: str) -> bool:
+    """基于关键词判断文本是否包含先后依赖信号。"""
+    if not text:
+        return False
+    return any(pattern.search(text) for pattern in DEPENDENCY_PATTERNS)
 
 
 # ────────────────────────────────────────────────────────────
@@ -200,13 +329,15 @@ def route_by_intent(state: AgentState) -> str | list[Send]:
     """
     agent = state.get("current_agent", "done")
     if agent == "parallel":
+        dispatch_intents = state.get("dispatch_intents", []) or state.get("pending_intents", [])
+
         # 同类型意图合并为一次分发，避免并行写冲突。
         grouped_queries: dict[str, list[str]] = {
             "medical": [],
             "device": [],
             "chat": [],
         }
-        for intent in state.get("pending_intents", []):
+        for intent in dispatch_intents:
             agent_key = INTENT_TO_AGENT.get(intent.get("type", "CHITCHAT"), "chat")
             if agent_key == "emergency":
                 # emergency 已在 supervisor_node 中短路处理，这里忽略
@@ -231,7 +362,7 @@ def route_by_intent(state: AgentState) -> str | list[Send]:
             )
 
         logger.info(f"并行分发 | branches={active_branches}")
-        return sends if sends else "chat"
+        return sends if sends else "done"
 
     logger.debug(f"路由决策 | current_agent={agent}")
     return agent

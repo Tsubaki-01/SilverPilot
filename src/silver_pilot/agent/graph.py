@@ -6,12 +6,14 @@
 图拓扑结构：
     perception_router → supervisor → {medical, device, chat, emergency}
                                ↘ (Send 并行) ↙
-    supervisor → response_synthesizer → output_guard → memory_writer → END
+                         {medical, device, chat, emergency} → supervisor
+    supervisor(done) → response_synthesizer → output_guard → memory_writer → END
 
     Supervisor 通过 conditional_edges + Send 实现动态路由：
     - 单意图: route_by_intent 返回 str，路由到对应子 Agent
-    - 多意图: route_by_intent 返回 list[Send]，并行分发到多个子 Agent
-    - 子 Agent 完成后直接进入 response_synthesizer 聚合
+    - 多意图无依赖: route_by_intent 返回 list[Send]，并行分发
+    - 多意图有依赖: 子 Agent 执行后回流 supervisor，按队列继续调度
+    - 所有任务完成后 current_agent=done，进入 response_synthesizer 聚合
 """
 
 from pathlib import Path
@@ -89,9 +91,9 @@ def build_agent_graph(checkpointer: object | None = None) -> CompiledStateGraph:
         },
     )
 
-    # ── 子 Agent 完成后统一收敛到 Response Synthesizer ──
+    # ── 子 Agent 完成后回流 Supervisor，持续调度直到 done ──
     for agent_node in ["medical_agent", "device_agent", "chat_agent", "emergency_agent"]:
-        graph.add_edge(agent_node, "response_synthesizer")
+        graph.add_edge(agent_node, "supervisor")
 
     # ── 输出链路 ──
     graph.add_edge("response_synthesizer", "output_guard")
